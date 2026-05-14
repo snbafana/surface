@@ -82,16 +82,22 @@ public struct Layout: Hashable, Codable, Identifiable, Sendable {
         self.blocks = blocks
     }
 
-    public func nextFrame(size: GridSize) -> GridFrame {
+    public func nextFrame(size: GridSize, excluding excludedID: BlockID? = nil) -> GridFrame {
         for y in 0..<grid.rows {
             for x in 0..<grid.columns {
                 let frame = grid.frame(for: GridPoint(x: x, y: y), size: size)
-                if grid.contains(frame), !blocks.contains(where: { $0.enabled && $0.frame.intersects(frame) }) {
+                if grid.contains(frame), !intersectsEnabledBlock(frame, excluding: excludedID) {
                     return frame
                 }
             }
         }
         return grid.frame(for: GridPoint(x: 0, y: 0), size: size)
+    }
+
+    public func intersectsEnabledBlock(_ frame: GridFrame, excluding excludedID: BlockID? = nil) -> Bool {
+        blocks.contains { block in
+            block.enabled && block.id != excludedID && block.frame.intersects(frame)
+        }
     }
 }
 

@@ -65,6 +65,38 @@ struct CoreTests {
         }
     }
 
+    @Test func overlappingEnabledBlocksAreRejected() {
+        let layout = Layout(blocks: [
+            BlockInstance(id: "captures", frame: GridFrame(x: 0, y: 0, width: 4, height: 3)),
+            BlockInstance(id: "status", frame: GridFrame(x: 2, y: 1, width: 4, height: 3))
+        ])
+
+        #expect(throws: ModelError.overlappingBlocks("captures", "status")) {
+            _ = try Workspace(
+                definitions: [
+                    BlockDefinition(id: "captures", title: "Captures"),
+                    BlockDefinition(id: "status", title: "Status")
+                ],
+                layout: layout
+            )
+        }
+    }
+
+    @Test func overlappingDisabledBlocksAreAllowed() throws {
+        let workspace = try Workspace(
+            definitions: [
+                BlockDefinition(id: "captures", title: "Captures"),
+                BlockDefinition(id: "status", title: "Status")
+            ],
+            layout: Layout(blocks: [
+                BlockInstance(id: "captures", enabled: false, frame: GridFrame(x: 0, y: 0, width: 4, height: 3)),
+                BlockInstance(id: "status", enabled: false, frame: GridFrame(x: 2, y: 1, width: 4, height: 3))
+            ])
+        )
+
+        #expect(workspace.layout.blocks.count == 2)
+    }
+
     @Test func enablingBlockCreatesAClampedInstance() throws {
         var workspace = try Workspace(
             definitions: [BlockDefinition(id: "status", title: "Status", defaultSize: GridSize(width: 20, height: 20))],
@@ -91,6 +123,23 @@ struct CoreTests {
         #expect(workspace.layout.blocks[0].frame.origin == GridPoint(x: 8, y: 5))
     }
 
+    @Test func moveBlockRejectsOverlappingEnabledBlock() throws {
+        var workspace = try Workspace(
+            definitions: [
+                BlockDefinition(id: "captures", title: "Captures"),
+                BlockDefinition(id: "status", title: "Status")
+            ],
+            layout: Layout(blocks: [
+                BlockInstance(id: "captures", frame: GridFrame(x: 0, y: 0, width: 4, height: 3)),
+                BlockInstance(id: "status", frame: GridFrame(x: 6, y: 0, width: 4, height: 3))
+            ])
+        )
+
+        try workspace.moveBlock("status", to: GridPoint(x: 2, y: 1))
+
+        #expect(workspace.layout.blocks.first(where: { $0.id == "status" })?.frame == GridFrame(x: 6, y: 0, width: 4, height: 3))
+    }
+
     @Test func disablingAndReenablingBlockPreservesPlacement() throws {
         var workspace = try Workspace(
             definitions: [BlockDefinition(id: "captures", title: "Captures")],
@@ -105,6 +154,23 @@ struct CoreTests {
         #expect(workspace.layout.blocks.count == 1)
         #expect(workspace.layout.blocks[0].enabled)
         #expect(workspace.layout.blocks[0].frame == GridFrame(x: 5, y: 2, width: 4, height: 3))
+    }
+
+    @Test func reenablingBlockMovesToOpenSlotWhenSavedPlacementIsOccupied() throws {
+        var workspace = try Workspace(
+            definitions: [
+                BlockDefinition(id: "captures", title: "Captures"),
+                BlockDefinition(id: "status", title: "Status")
+            ],
+            layout: Layout(grid: Grid(columns: 8, rows: 4), blocks: [
+                BlockInstance(id: "captures", enabled: false, frame: GridFrame(x: 0, y: 0, width: 4, height: 2)),
+                BlockInstance(id: "status", enabled: true, frame: GridFrame(x: 0, y: 0, width: 4, height: 2))
+            ])
+        )
+
+        try workspace.setEnabled(true, for: "captures")
+
+        #expect(workspace.layout.blocks.first(where: { $0.id == "captures" })?.frame == GridFrame(x: 4, y: 0, width: 4, height: 2))
     }
 
     @Test func disabledBlocksDoNotReserveAutoPlacementSpace() throws {

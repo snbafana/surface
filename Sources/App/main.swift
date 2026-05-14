@@ -21,12 +21,18 @@ struct MainApp: App {
 struct SurfaceEditorView: View {
     @State private var workspace = DemoSurface.workspace
     @State private var dragging: [BlockID: CGSize] = [:]
+    @State private var hoveredBlock: BlockID?
+    @State private var menuCorner = OverlayCorner.topLeft
+    @State private var menuDrag = CGSize.zero
 
     var body: some View {
         GeometryReader { proxy in
             let grid = workspace.layout.grid
             let cellWidth = proxy.size.width / CGFloat(grid.columns)
             let cellHeight = proxy.size.height / CGFloat(grid.rows)
+            let menuSize = CGSize(width: 270, height: 150)
+            let margin = CGFloat(18)
+            let menuOrigin = menuCorner.origin(in: proxy.size, size: menuSize, margin: margin)
 
             ZStack(alignment: .topLeading) {
                 Canvas { context, size in
@@ -41,7 +47,7 @@ struct SurfaceEditorView: View {
                         path.move(to: CGPoint(x: 0, y: y))
                         path.addLine(to: CGPoint(x: size.width, y: y))
                     }
-                    context.stroke(path, with: .color(.white.opacity(0.22)), lineWidth: 1)
+                    context.stroke(path, with: .color(.white.opacity(0.10)), lineWidth: 1)
                 }
                 .ignoresSafeArea()
 
@@ -66,21 +72,43 @@ struct SurfaceEditorView: View {
                     .buttonStyle(.bordered)
                 }
                 .padding(12)
-                .frame(width: 270, alignment: .leading)
+                .frame(width: menuSize.width, height: menuSize.height, alignment: .topLeading)
                 .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
                 .overlay {
                     RoundedRectangle(cornerRadius: 10)
                         .stroke(.white.opacity(0.18), lineWidth: 1)
                 }
-                .padding(18)
+                .offset(x: menuOrigin.x + menuDrag.width, y: menuOrigin.y + menuDrag.height)
+                .animation(.smooth(duration: 0.16), value: menuCorner)
+                .animation(.smooth(duration: 0.12), value: menuDrag)
+                .gesture(
+                    DragGesture()
+                        .onChanged { value in
+                            menuDrag = value.translation
+                        }
+                        .onEnded { value in
+                            let point = CGPoint(
+                                x: menuOrigin.x + value.translation.width + menuSize.width / 2,
+                                y: menuOrigin.y + value.translation.height + menuSize.height / 2
+                            )
+                            withAnimation(.smooth(duration: 0.18)) {
+                                menuCorner = OverlayCorner.nearest(to: point, in: proxy.size)
+                                menuDrag = .zero
+                            }
+                        }
+                )
 
                 ForEach(workspace.enabledBlocks) { block in
+                    let isActive = hoveredBlock == block.id || dragging[block.id] != nil
+
                     VStack(alignment: .leading, spacing: 6) {
                         Text(title(for: block.id))
                             .font(.headline)
-                        Text("\(block.frame.origin.x), \(block.frame.origin.y) / \(block.frame.size.width)x\(block.frame.size.height)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        if isActive {
+                            Text("\(block.frame.origin.x), \(block.frame.origin.y) / \(block.frame.size.width)x\(block.frame.size.height)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                     .padding(12)
                     .frame(
@@ -88,11 +116,37 @@ struct SurfaceEditorView: View {
                         height: CGFloat(block.frame.size.height) * cellHeight - 8,
                         alignment: .topLeading
                     )
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
                     .overlay {
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(.white.opacity(0.18), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(.white.opacity(isActive ? 0.30 : 0.14), lineWidth: 1)
                     }
+                    .overlay(alignment: .topTrailing) {
+                        if isActive {
+                            Circle()
+                                .fill(.white.opacity(0.85))
+                                .frame(width: 8, height: 8)
+                                .padding(7)
+                        }
+                    }
+                    .overlay(alignment: .bottomTrailing) {
+                        if isActive {
+                            Circle()
+                                .fill(.white.opacity(0.85))
+                                .frame(width: 8, height: 8)
+                                .padding(7)
+                        }
+                    }
+                    .overlay(alignment: .bottomLeading) {
+                        if isActive {
+                            Circle()
+                                .fill(.white.opacity(0.85))
+                                .frame(width: 8, height: 8)
+                                .padding(7)
+                        }
+                    }
+                    .shadow(color: .black.opacity(isActive ? 0.28 : 0.08), radius: isActive ? 24 : 10, y: isActive ? 12 : 4)
+                    .scaleEffect(dragging[block.id] != nil ? 1.015 : 1.0)
                     .offset(
                         x: CGFloat(block.frame.origin.x) * cellWidth + 4,
                         y: CGFloat(block.frame.origin.y) * cellHeight + 4
@@ -100,6 +154,10 @@ struct SurfaceEditorView: View {
                     .offset(dragging[block.id] ?? .zero)
                     .animation(.smooth(duration: 0.18), value: block.frame)
                     .animation(.smooth(duration: 0.12), value: dragging[block.id] ?? .zero)
+                    .animation(.smooth(duration: 0.12), value: hoveredBlock)
+                    .onHover { isHovering in
+                        hoveredBlock = isHovering ? block.id : (hoveredBlock == block.id ? nil : hoveredBlock)
+                    }
                     .gesture(
                         DragGesture()
                             .onChanged { value in
@@ -124,6 +182,39 @@ struct SurfaceEditorView: View {
     }
 }
 
+enum OverlayCorner {
+    case topLeft
+    case topRight
+    case bottomLeft
+    case bottomRight
+
+    func origin(in container: CGSize, size: CGSize, margin: CGFloat) -> CGPoint {
+        switch self {
+        case .topLeft:
+            CGPoint(x: margin, y: margin)
+        case .topRight:
+            CGPoint(x: container.width - size.width - margin, y: margin)
+        case .bottomLeft:
+            CGPoint(x: margin, y: container.height - size.height - margin)
+        case .bottomRight:
+            CGPoint(x: container.width - size.width - margin, y: container.height - size.height - margin)
+        }
+    }
+
+    static func nearest(to point: CGPoint, in container: CGSize) -> OverlayCorner {
+        switch (point.x >= container.width / 2, point.y >= container.height / 2) {
+        case (false, false):
+            .topLeft
+        case (true, false):
+            .topRight
+        case (false, true):
+            .bottomLeft
+        case (true, true):
+            .bottomRight
+        }
+    }
+}
+
 extension NSWindow {
     func makeSurfaceEditorOverlay() {
         guard let targetScreen = screen ?? NSScreen.main else {
@@ -140,7 +231,7 @@ extension NSWindow {
         standardWindowButton(.zoomButton)?.isHidden = true
         styleMask = [.borderless, .fullSizeContentView]
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
-        setFrame(targetScreen.frame, display: true)
+        setFrame(targetScreen.visibleFrame, display: true)
     }
 }
 

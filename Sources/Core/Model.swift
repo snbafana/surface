@@ -57,6 +57,9 @@ public struct Workspace: Hashable, Codable, Sendable {
 
         if let index = layout.blocks.firstIndex(where: { $0.id == id }) {
             layout.blocks[index].enabled = enabled
+            if enabled && layout.intersectsEnabledBlock(layout.blocks[index].frame, excluding: id) {
+                layout.blocks[index].frame = layout.nextFrame(size: layout.blocks[index].frame.size, excluding: id)
+            }
         } else {
             let frame = layout.nextFrame(size: definition.defaultSize)
             layout.blocks.append(BlockInstance(id: id, enabled: enabled, frame: frame))
@@ -68,7 +71,10 @@ public struct Workspace: Hashable, Codable, Sendable {
         guard let index = layout.blocks.firstIndex(where: { $0.id == id }) else {
             throw ModelError.unknownBlock(id.rawValue)
         }
-        layout.blocks[index].frame = layout.grid.frame(for: origin, size: layout.blocks[index].frame.size)
+        let frame = layout.grid.frame(for: origin, size: layout.blocks[index].frame.size)
+        if !layout.intersectsEnabledBlock(frame, excluding: id) {
+            layout.blocks[index].frame = frame
+        }
         try validate()
     }
 
@@ -90,6 +96,18 @@ public struct Workspace: Hashable, Codable, Sendable {
                 throw ModelError.blockOutsideGrid(block.id.rawValue)
             }
         }
+
+        let enabledBlocks = layout.blocks.filter(\.enabled)
+        for index in enabledBlocks.indices {
+            for otherIndex in enabledBlocks.indices.dropFirst(index + 1) {
+                if enabledBlocks[index].frame.intersects(enabledBlocks[otherIndex].frame) {
+                    throw ModelError.overlappingBlocks(
+                        enabledBlocks[index].id.rawValue,
+                        enabledBlocks[otherIndex].id.rawValue
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -98,6 +116,7 @@ public enum ModelError: Error, Equatable, LocalizedError {
     case duplicateBlock(String)
     case unknownBlock(String)
     case blockOutsideGrid(String)
+    case overlappingBlocks(String, String)
 
     public var errorDescription: String? {
         switch self {
@@ -109,6 +128,8 @@ public enum ModelError: Error, Equatable, LocalizedError {
             return "Block `\(id)` has no definition."
         case .blockOutsideGrid(let id):
             return "Block `\(id)` is outside the layout grid."
+        case .overlappingBlocks(let first, let second):
+            return "Blocks `\(first)` and `\(second)` overlap."
         }
     }
 }
