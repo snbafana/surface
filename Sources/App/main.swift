@@ -20,6 +20,7 @@ struct MainApp: App {
 
 struct SurfaceEditorView: View {
     @State private var workspace = DemoSurface.workspace
+    @State private var dragging: [BlockID: CGSize] = [:]
 
     var body: some View {
         GeometryReader { proxy in
@@ -44,21 +45,28 @@ struct SurfaceEditorView: View {
                 }
                 .ignoresSafeArea()
 
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Surface")
-                        .font(.headline)
-                    ForEach(workspace.definitions) { definition in
-                        Toggle(
-                            definition.title,
-                            isOn: Binding(
-                                get: { workspace.layout.blocks.first(where: { $0.id == definition.id })?.enabled ?? false },
-                                set: { isEnabled in try? workspace.setEnabled(isEnabled, for: definition.id) }
+                HStack(alignment: .top, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Surface")
+                            .font(.headline)
+                        ForEach(workspace.definitions) { definition in
+                            Toggle(
+                                definition.title,
+                                isOn: Binding(
+                                    get: { workspace.layout.blocks.first(where: { $0.id == definition.id })?.enabled ?? false },
+                                    set: { isEnabled in try? workspace.setEnabled(isEnabled, for: definition.id) }
+                                )
                             )
-                        )
+                        }
                     }
+                    Button("Esc") {
+                        NSApp.terminate(nil)
+                    }
+                    .keyboardShortcut(.escape, modifiers: [])
+                    .buttonStyle(.bordered)
                 }
                 .padding(12)
-                .frame(width: 210, alignment: .leading)
+                .frame(width: 270, alignment: .leading)
                 .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
                 .overlay {
                     RoundedRectangle(cornerRadius: 10)
@@ -89,12 +97,21 @@ struct SurfaceEditorView: View {
                         x: CGFloat(block.frame.origin.x) * cellWidth + 4,
                         y: CGFloat(block.frame.origin.y) * cellHeight + 4
                     )
+                    .offset(dragging[block.id] ?? .zero)
+                    .animation(.smooth(duration: 0.18), value: block.frame)
+                    .animation(.smooth(duration: 0.12), value: dragging[block.id] ?? .zero)
                     .gesture(
                         DragGesture()
+                            .onChanged { value in
+                                dragging[block.id] = value.translation
+                            }
                             .onEnded { value in
                                 let x = block.frame.origin.x + Int((value.translation.width / cellWidth).rounded())
                                 let y = block.frame.origin.y + Int((value.translation.height / cellHeight).rounded())
-                                try? workspace.moveBlock(block.id, to: GridPoint(x: x, y: y))
+                                withAnimation(.smooth(duration: 0.18)) {
+                                    dragging[block.id] = .zero
+                                    try? workspace.moveBlock(block.id, to: GridPoint(x: x, y: y))
+                                }
                             }
                     )
                 }
@@ -127,14 +144,14 @@ extension NSWindow {
 enum DemoSurface {
     static let workspace: Workspace = {
         let definitions = [
-            BlockDefinition(id: "command", title: "Command", defaultSize: GridSize(width: 8, height: 2)),
-            BlockDefinition(id: "captures", title: "Captures", defaultSize: GridSize(width: 4, height: 4)),
-            BlockDefinition(id: "status", title: "Status", defaultSize: GridSize(width: 4, height: 2))
+            BlockDefinition(id: "command", title: "Command", defaultSize: GridSize(width: 16, height: 4)),
+            BlockDefinition(id: "captures", title: "Captures", defaultSize: GridSize(width: 8, height: 8)),
+            BlockDefinition(id: "status", title: "Status", defaultSize: GridSize(width: 8, height: 4))
         ]
-        let layout = Layout(blocks: [
-            BlockInstance(id: "command", frame: GridFrame(x: 2, y: 0, width: 8, height: 2)),
-            BlockInstance(id: "captures", frame: GridFrame(x: 0, y: 2, width: 4, height: 4)),
-            BlockInstance(id: "status", frame: GridFrame(x: 8, y: 2, width: 4, height: 2))
+        let layout = Layout(grid: Grid(columns: 24, rows: 16), blocks: [
+            BlockInstance(id: "command", frame: GridFrame(x: 4, y: 1, width: 16, height: 4)),
+            BlockInstance(id: "captures", frame: GridFrame(x: 1, y: 6, width: 8, height: 8)),
+            BlockInstance(id: "status", frame: GridFrame(x: 15, y: 6, width: 8, height: 4))
         ])
         return try! Workspace(definitions: definitions, layout: layout)
     }()
