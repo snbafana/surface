@@ -31,6 +31,40 @@ struct CoreTests {
         }
     }
 
+    @Test func duplicateDefinitionsAreRejected() {
+        let definitions = [
+            BlockDefinition(id: "command", title: "Command"),
+            BlockDefinition(id: "command", title: "Command Copy")
+        ]
+
+        #expect(throws: ModelError.duplicateDefinition) {
+            _ = try Workspace(definitions: definitions, layout: Layout())
+        }
+    }
+
+    @Test func unknownBlocksAreRejected() {
+        let layout = Layout(blocks: [
+            BlockInstance(id: "missing", frame: GridFrame(x: 0, y: 0, width: 4, height: 2))
+        ])
+
+        #expect(throws: ModelError.unknownBlock("missing")) {
+            _ = try Workspace(definitions: [], layout: layout)
+        }
+    }
+
+    @Test func blocksOutsideTheGridAreRejected() {
+        let layout = Layout(grid: Grid(columns: 4, rows: 4), blocks: [
+            BlockInstance(id: "command", frame: GridFrame(x: 3, y: 3, width: 2, height: 2))
+        ])
+
+        #expect(throws: ModelError.blockOutsideGrid("command")) {
+            _ = try Workspace(
+                definitions: [BlockDefinition(id: "command", title: "Command")],
+                layout: layout
+            )
+        }
+    }
+
     @Test func enablingBlockCreatesAClampedInstance() throws {
         var workspace = try Workspace(
             definitions: [BlockDefinition(id: "status", title: "Status", defaultSize: GridSize(width: 20, height: 20))],
@@ -55,6 +89,47 @@ struct CoreTests {
         try workspace.moveBlock("captures", to: GridPoint(x: 99, y: 99))
 
         #expect(workspace.layout.blocks[0].frame.origin == GridPoint(x: 8, y: 5))
+    }
+
+    @Test func disablingAndReenablingBlockPreservesPlacement() throws {
+        var workspace = try Workspace(
+            definitions: [BlockDefinition(id: "captures", title: "Captures")],
+            layout: Layout(blocks: [
+                BlockInstance(id: "captures", frame: GridFrame(x: 5, y: 2, width: 4, height: 3))
+            ])
+        )
+
+        try workspace.setEnabled(false, for: "captures")
+        try workspace.setEnabled(true, for: "captures")
+
+        #expect(workspace.layout.blocks.count == 1)
+        #expect(workspace.layout.blocks[0].enabled)
+        #expect(workspace.layout.blocks[0].frame == GridFrame(x: 5, y: 2, width: 4, height: 3))
+    }
+
+    @Test func disabledBlocksDoNotReserveAutoPlacementSpace() throws {
+        let layout = Layout(grid: Grid(columns: 8, rows: 4), blocks: [
+            BlockInstance(id: "captures", enabled: false, frame: GridFrame(x: 0, y: 0, width: 4, height: 2))
+        ])
+
+        #expect(layout.nextFrame(size: GridSize(width: 4, height: 2)) == GridFrame(x: 0, y: 0, width: 4, height: 2))
+    }
+
+    @Test func enabledBlocksReserveAutoPlacementSpace() throws {
+        let layout = Layout(grid: Grid(columns: 8, rows: 4), blocks: [
+            BlockInstance(id: "captures", enabled: true, frame: GridFrame(x: 0, y: 0, width: 4, height: 2))
+        ])
+
+        #expect(layout.nextFrame(size: GridSize(width: 4, height: 2)) == GridFrame(x: 4, y: 0, width: 4, height: 2))
+    }
+
+    @Test func gridAndSizeValuesClampToMinimumOne() {
+        let grid = Grid(columns: 0, rows: -2)
+        let size = GridSize(width: 0, height: -5)
+
+        #expect(grid.columns == 1)
+        #expect(grid.rows == 1)
+        #expect(size == GridSize(width: 1, height: 1))
     }
 
     @Test func workspaceRoundTripsThroughJSON() throws {
