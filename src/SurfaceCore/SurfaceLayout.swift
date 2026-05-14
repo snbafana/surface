@@ -1,0 +1,105 @@
+import Foundation
+
+public struct GridPoint: Hashable, Codable, Sendable {
+    public var x: Int
+    public var y: Int
+
+    public init(x: Int, y: Int) {
+        self.x = x
+        self.y = y
+    }
+}
+
+public struct GridSize: Hashable, Codable, Sendable {
+    public var width: Int
+    public var height: Int
+
+    public init(width: Int, height: Int) {
+        self.width = max(1, width)
+        self.height = max(1, height)
+    }
+}
+
+public struct GridFrame: Hashable, Codable, Sendable {
+    public var origin: GridPoint
+    public var size: GridSize
+
+    public init(x: Int, y: Int, width: Int, height: Int) {
+        origin = GridPoint(x: x, y: y)
+        size = GridSize(width: width, height: height)
+    }
+
+    public init(origin: GridPoint, size: GridSize) {
+        self.origin = origin
+        self.size = size
+    }
+}
+
+public struct SurfaceGrid: Hashable, Codable, Sendable {
+    public var columns: Int
+    public var rows: Int
+
+    public init(columns: Int = 12, rows: Int = 8) {
+        self.columns = max(1, columns)
+        self.rows = max(1, rows)
+    }
+
+    public func contains(_ frame: GridFrame) -> Bool {
+        frame.origin.x >= 0 &&
+            frame.origin.y >= 0 &&
+            frame.origin.x + frame.size.width <= columns &&
+            frame.origin.y + frame.size.height <= rows
+    }
+
+    public func clamped(origin: GridPoint, size: GridSize) -> GridPoint {
+        let size = clamped(size: size)
+        return GridPoint(
+            x: min(max(0, origin.x), max(0, columns - size.width)),
+            y: min(max(0, origin.y), max(0, rows - size.height))
+        )
+    }
+
+    public func clamped(size: GridSize) -> GridSize {
+        GridSize(width: min(size.width, columns), height: min(size.height, rows))
+    }
+
+    public func frame(for point: GridPoint, size: GridSize) -> GridFrame {
+        let size = clamped(size: size)
+        return GridFrame(origin: clamped(origin: point, size: size), size: size)
+    }
+}
+
+public struct SurfaceLayout: Hashable, Codable, Identifiable, Sendable {
+    public var id: String
+    public var title: String
+    public var grid: SurfaceGrid
+    public var blocks: [BlockInstance]
+
+    public init(id: String = "default", title: String = "Default", grid: SurfaceGrid = SurfaceGrid(), blocks: [BlockInstance] = []) {
+        self.id = id
+        self.title = title
+        self.grid = grid
+        self.blocks = blocks
+    }
+
+    public func nextFrame(size: GridSize) -> GridFrame {
+        for y in 0..<grid.rows {
+            for x in 0..<grid.columns {
+                let frame = grid.frame(for: GridPoint(x: x, y: y), size: size)
+                if grid.contains(frame), !blocks.contains(where: { $0.enabled && $0.frame.intersects(frame) }) {
+                    return frame
+                }
+            }
+        }
+        return grid.frame(for: GridPoint(x: 0, y: 0), size: size)
+    }
+}
+
+public extension GridFrame {
+    func intersects(_ other: GridFrame) -> Bool {
+        origin.x < other.origin.x + other.size.width &&
+            origin.x + size.width > other.origin.x &&
+            origin.y < other.origin.y + other.size.height &&
+            origin.y + size.height > other.origin.y
+    }
+}
