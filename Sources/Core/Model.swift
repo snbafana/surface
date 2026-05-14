@@ -71,10 +71,11 @@ public struct Workspace: Hashable, Codable, Sendable {
         guard let index = layout.blocks.firstIndex(where: { $0.id == id }) else {
             throw ModelError.unknownBlock(id.rawValue)
         }
-        let frame = layout.grid.frame(for: origin, size: layout.blocks[index].frame.size)
-        if !layout.intersectsEnabledBlock(frame, excluding: id) {
-            layout.blocks[index].frame = frame
-        }
+        layout.blocks[index].frame = layout.nearestFrame(
+            from: layout.blocks[index].frame,
+            to: origin,
+            excluding: id
+        )
         try validate()
     }
 

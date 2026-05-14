@@ -123,7 +123,7 @@ struct CoreTests {
         #expect(workspace.layout.blocks[0].frame.origin == GridPoint(x: 8, y: 5))
     }
 
-    @Test func moveBlockRejectsOverlappingEnabledBlock() throws {
+    @Test func moveBlockStopsAtNearestOpenFrameBeforeOverlap() throws {
         var workspace = try Workspace(
             definitions: [
                 BlockDefinition(id: "captures", title: "Captures"),
@@ -137,7 +137,24 @@ struct CoreTests {
 
         try workspace.moveBlock("status", to: GridPoint(x: 2, y: 1))
 
-        #expect(workspace.layout.blocks.first(where: { $0.id == "status" })?.frame == GridFrame(x: 6, y: 0, width: 4, height: 3))
+        #expect(workspace.layout.blocks.first(where: { $0.id == "status" })?.frame == GridFrame(x: 4, y: 1, width: 4, height: 3))
+    }
+
+    @Test func moveBlockKeepsLastReachableFrameOnBlockedDiagonalDrag() throws {
+        var workspace = try Workspace(
+            definitions: [
+                BlockDefinition(id: "captures", title: "Captures"),
+                BlockDefinition(id: "status", title: "Status")
+            ],
+            layout: Layout(grid: Grid(columns: 12, rows: 8), blocks: [
+                BlockInstance(id: "captures", frame: GridFrame(x: 4, y: 3, width: 4, height: 3)),
+                BlockInstance(id: "status", frame: GridFrame(x: 0, y: 0, width: 3, height: 2))
+            ])
+        )
+
+        try workspace.moveBlock("status", to: GridPoint(x: 5, y: 4))
+
+        #expect(workspace.layout.blocks.first(where: { $0.id == "status" })?.frame == GridFrame(x: 1, y: 1, width: 3, height: 2))
     }
 
     @Test func disablingAndReenablingBlockPreservesPlacement() throws {

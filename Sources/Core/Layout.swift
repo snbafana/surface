@@ -94,6 +94,31 @@ public struct Layout: Hashable, Codable, Identifiable, Sendable {
         return grid.frame(for: GridPoint(x: 0, y: 0), size: size)
     }
 
+    func nearestFrame(from start: GridFrame, to point: GridPoint, excluding excludedID: BlockID? = nil) -> GridFrame {
+        let target = grid.frame(for: point, size: start.size)
+        let dx = target.origin.x - start.origin.x
+        let dy = target.origin.y - start.origin.y
+        let steps = max(abs(dx), abs(dy))
+        guard steps > 0 else { return start }
+
+        var nearest = start
+        var seen = Set<GridPoint>()
+        for step in 1...steps {
+            let progress = Double(step) / Double(steps)
+            let point = GridPoint(
+                x: start.origin.x + Int((Double(dx) * progress).rounded()),
+                y: start.origin.y + Int((Double(dy) * progress).rounded())
+            )
+            guard seen.insert(point).inserted else { continue }
+
+            let frame = grid.frame(for: point, size: start.size)
+            if !intersectsEnabledBlock(frame, excluding: excludedID) {
+                nearest = frame
+            }
+        }
+        return nearest
+    }
+
     public func intersectsEnabledBlock(_ frame: GridFrame, excluding excludedID: BlockID? = nil) -> Bool {
         blocks.contains { block in
             block.enabled && block.id != excludedID && block.frame.intersects(frame)
