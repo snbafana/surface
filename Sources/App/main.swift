@@ -99,7 +99,8 @@ struct SurfaceEditorView: View {
                 )
 
                 ForEach(workspace.enabledBlocks) { block in
-                    let isActive = hoveredBlock == block.id || dragging[block.id] != nil
+                    let isDragging = dragging[block.id] != nil
+                    let isActive = hoveredBlock == block.id || isDragging
 
                     VStack(alignment: .leading, spacing: 6) {
                         Text(title(for: block.id))
@@ -122,7 +123,7 @@ struct SurfaceEditorView: View {
                             .stroke(.white.opacity(isActive ? 0.30 : 0.14), lineWidth: 1)
                     }
                     .overlay(alignment: .topTrailing) {
-                        if isActive {
+                        if isDragging {
                             Circle()
                                 .fill(.white.opacity(0.85))
                                 .frame(width: 8, height: 8)
@@ -130,7 +131,7 @@ struct SurfaceEditorView: View {
                         }
                     }
                     .overlay(alignment: .bottomTrailing) {
-                        if isActive {
+                        if isDragging {
                             Circle()
                                 .fill(.white.opacity(0.85))
                                 .frame(width: 8, height: 8)
@@ -138,15 +139,15 @@ struct SurfaceEditorView: View {
                         }
                     }
                     .overlay(alignment: .bottomLeading) {
-                        if isActive {
+                        if isDragging {
                             Circle()
                                 .fill(.white.opacity(0.85))
                                 .frame(width: 8, height: 8)
                                 .padding(7)
                         }
                     }
-                    .shadow(color: .black.opacity(isActive ? 0.28 : 0.08), radius: isActive ? 24 : 10, y: isActive ? 12 : 4)
-                    .scaleEffect(dragging[block.id] != nil ? 1.015 : 1.0)
+                    .shadow(color: .black.opacity(isDragging ? 0.28 : 0.08), radius: isDragging ? 24 : 10, y: isDragging ? 12 : 4)
+                    .scaleEffect(isDragging ? 1.015 : 1.0)
                     .offset(
                         x: CGFloat(block.frame.origin.x) * cellWidth + 4,
                         y: CGFloat(block.frame.origin.y) * cellHeight + 4
