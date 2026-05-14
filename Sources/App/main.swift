@@ -5,14 +5,14 @@ import SwiftUI
 struct MainApp: App {
     var body: some Scene {
         WindowGroup {
-            SurfacePreviewView(document: DemoSurface.document)
+            SurfacePreviewView(workspace: DemoSurface.workspace)
                 .frame(minWidth: 900, minHeight: 560)
         }
     }
 }
 
 struct SurfacePreviewView: View {
-    let document: Document
+    let workspace: Workspace
 
     var body: some View {
         ZStack {
@@ -26,11 +26,11 @@ struct SurfacePreviewView: View {
                     .foregroundStyle(.secondary)
 
                 GeometryReader { proxy in
-                    let cellWidth = proxy.size.width / CGFloat(document.layout.grid.columns)
-                    let cellHeight = proxy.size.height / CGFloat(document.layout.grid.rows)
+                    let cellWidth = proxy.size.width / CGFloat(workspace.layout.grid.columns)
+                    let cellHeight = proxy.size.height / CGFloat(workspace.layout.grid.rows)
 
                     ZStack(alignment: .topLeading) {
-                        ForEach(document.enabledBlocks) { block in
+                        ForEach(workspace.enabledBlocks) { block in
                             RoundedRectangle(cornerRadius: 14)
                                 .fill(.ultraThinMaterial)
                                 .overlay(alignment: .topLeading) {
@@ -55,12 +55,12 @@ struct SurfacePreviewView: View {
     }
 
     private func title(for id: BlockID) -> String {
-        document.definitions.first(where: { $0.id == id })?.title ?? id.rawValue
+        workspace.definitions.first(where: { $0.id == id })?.title ?? id.rawValue
     }
 }
 
 enum DemoSurface {
-    static let document: Document = {
+    static let workspace: Workspace = {
         let definitions = [
             BlockDefinition(id: "command", title: "Command", defaultSize: GridSize(width: 8, height: 2)),
             BlockDefinition(id: "captures", title: "Captures", defaultSize: GridSize(width: 4, height: 4)),
@@ -71,6 +71,6 @@ enum DemoSurface {
             BlockInstance(id: "captures", frame: GridFrame(x: 0, y: 2, width: 4, height: 4)),
             BlockInstance(id: "status", frame: GridFrame(x: 8, y: 2, width: 4, height: 2))
         ])
-        return try! Document(definitions: definitions, layout: layout)
+        return try! Workspace(definitions: definitions, layout: layout)
     }()
 }

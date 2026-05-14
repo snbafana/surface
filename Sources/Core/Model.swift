@@ -36,7 +36,7 @@ public struct BlockInstance: Hashable, Codable, Identifiable, Sendable {
     }
 }
 
-public struct Document: Hashable, Codable, Sendable {
+public struct Workspace: Hashable, Codable, Sendable {
     public var definitions: [BlockDefinition]
     public var layout: Layout
 

@@ -8,7 +8,7 @@ The minimum model is:
 
 - `BlockDefinition`: a possible block type, such as command, captures, status, or daily note.
 - `BlockInstance`: the singleton instance of that block type in a layout.
-- `Document`: the available block definitions plus the active layout.
+- `Workspace`: the available block definitions plus the active layout.
 
 Rules:
 
