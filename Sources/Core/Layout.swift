@@ -35,7 +35,7 @@ public struct GridFrame: Hashable, Codable, Sendable {
     }
 }
 
-public struct SurfaceGrid: Hashable, Codable, Sendable {
+public struct Grid: Hashable, Codable, Sendable {
     public var columns: Int
     public var rows: Int
 
@@ -69,13 +69,13 @@ public struct SurfaceGrid: Hashable, Codable, Sendable {
     }
 }
 
-public struct SurfaceLayout: Hashable, Codable, Identifiable, Sendable {
+public struct Layout: Hashable, Codable, Identifiable, Sendable {
     public var id: String
     public var title: String
-    public var grid: SurfaceGrid
+    public var grid: Grid
     public var blocks: [BlockInstance]
 
-    public init(id: String = "default", title: String = "Default", grid: SurfaceGrid = SurfaceGrid(), blocks: [BlockInstance] = []) {
+    public init(id: String = "default", title: String = "Default", grid: Grid = Grid(), blocks: [BlockInstance] = []) {
         self.id = id
         self.title = title
         self.grid = grid

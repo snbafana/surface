@@ -1,18 +1,18 @@
 import Foundation
 import Testing
-@testable import SurfaceCore
+@testable import Core
 
 @Suite("Surface block model")
-struct SurfaceCoreTests {
+struct CoreTests {
     @Test func documentAllowsOneInstancePerBlockDefinition() throws {
         let definitions = [
             BlockDefinition(id: "command", title: "Command")
         ]
-        let layout = SurfaceLayout(blocks: [
+        let layout = Layout(blocks: [
             BlockInstance(id: "command", frame: GridFrame(x: 0, y: 0, width: 4, height: 2))
         ])
 
-        let document = try SurfaceDocument(definitions: definitions, layout: layout)
+        let document = try Document(definitions: definitions, layout: layout)
 
         #expect(document.enabledBlocks.map(\.id) == ["command"])
     }
@@ -21,20 +21,20 @@ struct SurfaceCoreTests {
         let definitions = [
             BlockDefinition(id: "command", title: "Command")
         ]
-        let layout = SurfaceLayout(blocks: [
+        let layout = Layout(blocks: [
             BlockInstance(id: "command", frame: GridFrame(x: 0, y: 0, width: 4, height: 2)),
             BlockInstance(id: "command", frame: GridFrame(x: 4, y: 0, width: 4, height: 2))
         ])
 
-        #expect(throws: SurfaceModelError.duplicateBlock("command")) {
-            _ = try SurfaceDocument(definitions: definitions, layout: layout)
+        #expect(throws: ModelError.duplicateBlock("command")) {
+            _ = try Document(definitions: definitions, layout: layout)
         }
     }
 
     @Test func enablingBlockCreatesAClampedInstance() throws {
-        var document = try SurfaceDocument(
+        var document = try Document(
             definitions: [BlockDefinition(id: "status", title: "Status", defaultSize: GridSize(width: 20, height: 20))],
-            layout: SurfaceLayout(grid: SurfaceGrid(columns: 12, rows: 8))
+            layout: Layout(grid: Grid(columns: 12, rows: 8))
         )
 
         try document.setEnabled(true, for: "status")
@@ -45,9 +45,9 @@ struct SurfaceCoreTests {
     }
 
     @Test func moveBlockSnapsInsideGridBounds() throws {
-        var document = try SurfaceDocument(
+        var document = try Document(
             definitions: [BlockDefinition(id: "captures", title: "Captures", defaultSize: GridSize(width: 4, height: 3))],
-            layout: SurfaceLayout(blocks: [
+            layout: Layout(blocks: [
                 BlockInstance(id: "captures", frame: GridFrame(x: 0, y: 0, width: 4, height: 3))
             ])
         )
@@ -58,24 +58,24 @@ struct SurfaceCoreTests {
     }
 
     @Test func documentRoundTripsThroughJSON() throws {
-        let document = try SurfaceDocument(
+        let document = try Document(
             definitions: [
                 BlockDefinition(id: "command", title: "Command", defaultSize: GridSize(width: 8, height: 2))
             ],
-            layout: SurfaceLayout(blocks: [
+            layout: Layout(blocks: [
                 BlockInstance(id: "command", enabled: true, frame: GridFrame(x: 2, y: 1, width: 8, height: 2))
             ])
         )
 
-        let data = try SurfaceStore.encode(document)
-        let decoded = try SurfaceStore.decode(data)
+        let data = try Store.encode(document)
+        let decoded = try Store.decode(data)
 
         #expect(decoded == document)
     }
 
     @Test func pluginBoundaryIsOnlyADescriptorInV0c() {
-        let catalog = SurfaceCatalog(
-            providers: [SurfaceProviderDescriptor(id: "quicksave", title: "Quicksave", blockIDs: ["captures"])],
+        let catalog = Catalog(
+            providers: [ProviderDescriptor(id: "quicksave", title: "Quicksave", blockIDs: ["captures"])],
             blocks: [BlockDefinition(id: "captures", title: "Captures")]
         )
 

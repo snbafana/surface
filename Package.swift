@@ -8,27 +8,27 @@ let package = Package(
         .macOS(.v14)
     ],
     products: [
-        .library(name: "SurfaceCore", targets: ["SurfaceCore"]),
-        .executable(name: "SurfaceApp", targets: ["SurfaceApp"])
+        .library(name: "Core", targets: ["Core"]),
+        .executable(name: "App", targets: ["App"])
     ],
     targets: [
         .target(
-            name: "SurfaceCore",
-            path: "src/SurfaceCore"
+            name: "Core",
+            path: "Sources/Core"
         ),
         .executableTarget(
-            name: "SurfaceApp",
-            dependencies: ["SurfaceCore"],
-            path: "src/SurfaceApp",
+            name: "App",
+            dependencies: ["Core"],
+            path: "Sources/App",
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("SwiftUI")
             ]
         ),
         .testTarget(
-            name: "SurfaceCoreTests",
-            dependencies: ["SurfaceCore"],
-            path: "tests/SurfaceCoreTests"
+            name: "CoreTests",
+            dependencies: ["Core"],
+            path: "tests/CoreTests"
         )
     ]
 )

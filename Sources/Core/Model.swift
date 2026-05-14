@@ -36,11 +36,11 @@ public struct BlockInstance: Hashable, Codable, Identifiable, Sendable {
     }
 }
 
-public struct SurfaceDocument: Hashable, Codable, Sendable {
+public struct Document: Hashable, Codable, Sendable {
     public var definitions: [BlockDefinition]
-    public var layout: SurfaceLayout
+    public var layout: Layout
 
-    public init(definitions: [BlockDefinition], layout: SurfaceLayout) throws {
+    public init(definitions: [BlockDefinition], layout: Layout) throws {
         self.definitions = definitions
         self.layout = layout
         try validate()
@@ -52,7 +52,7 @@ public struct SurfaceDocument: Hashable, Codable, Sendable {
 
     public mutating func setEnabled(_ enabled: Bool, for id: BlockID) throws {
         guard let definition = definitions.first(where: { $0.id == id }) else {
-            throw SurfaceModelError.unknownBlock(id.rawValue)
+            throw ModelError.unknownBlock(id.rawValue)
         }
 
         if let index = layout.blocks.firstIndex(where: { $0.id == id }) {
@@ -66,7 +66,7 @@ public struct SurfaceDocument: Hashable, Codable, Sendable {
 
     public mutating func moveBlock(_ id: BlockID, to origin: GridPoint) throws {
         guard let index = layout.blocks.firstIndex(where: { $0.id == id }) else {
-            throw SurfaceModelError.unknownBlock(id.rawValue)
+            throw ModelError.unknownBlock(id.rawValue)
         }
         layout.blocks[index].frame = layout.grid.frame(for: origin, size: layout.blocks[index].frame.size)
         try validate()
@@ -75,25 +75,25 @@ public struct SurfaceDocument: Hashable, Codable, Sendable {
     public func validate() throws {
         let knownIDs = Set(definitions.map(\.id))
         guard knownIDs.count == definitions.count else {
-            throw SurfaceModelError.duplicateDefinition
+            throw ModelError.duplicateDefinition
         }
 
         var instanceIDs = Set<BlockID>()
         for block in layout.blocks {
             guard knownIDs.contains(block.id) else {
-                throw SurfaceModelError.unknownBlock(block.id.rawValue)
+                throw ModelError.unknownBlock(block.id.rawValue)
             }
             guard instanceIDs.insert(block.id).inserted else {
-                throw SurfaceModelError.duplicateBlock(block.id.rawValue)
+                throw ModelError.duplicateBlock(block.id.rawValue)
             }
             guard layout.grid.contains(block.frame) else {
-                throw SurfaceModelError.blockOutsideGrid(block.id.rawValue)
+                throw ModelError.blockOutsideGrid(block.id.rawValue)
             }
         }
     }
 }
 
-public enum SurfaceModelError: Error, Equatable, LocalizedError {
+public enum ModelError: Error, Equatable, LocalizedError {
     case duplicateDefinition
     case duplicateBlock(String)
     case unknownBlock(String)

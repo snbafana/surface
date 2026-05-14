@@ -1,8 +1,8 @@
-import SurfaceCore
+import Core
 import SwiftUI
 
 @main
-struct SurfaceApp: App {
+struct MainApp: App {
     var body: some Scene {
         WindowGroup {
             SurfacePreviewView(document: DemoSurface.document)
@@ -12,7 +12,7 @@ struct SurfaceApp: App {
 }
 
 struct SurfacePreviewView: View {
-    let document: SurfaceDocument
+    let document: Document
 
     var body: some View {
         ZStack {
@@ -60,17 +60,17 @@ struct SurfacePreviewView: View {
 }
 
 enum DemoSurface {
-    static let document: SurfaceDocument = {
+    static let document: Document = {
         let definitions = [
             BlockDefinition(id: "command", title: "Command", defaultSize: GridSize(width: 8, height: 2)),
             BlockDefinition(id: "captures", title: "Captures", defaultSize: GridSize(width: 4, height: 4)),
             BlockDefinition(id: "status", title: "Status", defaultSize: GridSize(width: 4, height: 2))
         ]
-        let layout = SurfaceLayout(blocks: [
+        let layout = Layout(blocks: [
             BlockInstance(id: "command", frame: GridFrame(x: 2, y: 0, width: 8, height: 2)),
             BlockInstance(id: "captures", frame: GridFrame(x: 0, y: 2, width: 4, height: 4)),
             BlockInstance(id: "status", frame: GridFrame(x: 8, y: 2, width: 4, height: 2))
         ])
-        return try! SurfaceDocument(definitions: definitions, layout: layout)
+        return try! Document(definitions: definitions, layout: layout)
     }()
 }

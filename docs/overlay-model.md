@@ -8,7 +8,7 @@ The minimum model is:
 
 - `BlockDefinition`: a possible block type, such as command, captures, status, or daily note.
 - `BlockInstance`: the singleton instance of that block type in a layout.
-- `SurfaceDocument`: the available block definitions plus the active layout.
+- `Document`: the available block definitions plus the active layout.
 
 Rules:
 
@@ -21,11 +21,11 @@ Rules:
 
 The layout model uses a simple integer grid:
 
-- `SurfaceGrid`: column and row count.
+- `Grid`: column and row count.
 - `GridFrame`: block origin plus size in grid units.
 - Movement is snapped by writing integer grid coordinates.
 - Movement is clamped inside the grid.
-- Persistence is plain JSON through `SurfaceStore`.
+- Persistence is plain JSON through `Store`.
 
 This is intentionally enough for the first visual editor and no more.
 
@@ -33,7 +33,7 @@ This is intentionally enough for the first visual editor and no more.
 
 Plugins are not implemented in v0. The only plugin-facing model is a descriptor:
 
-- `SurfaceProviderDescriptor`: names a future provider and the block ids it owns.
-- `SurfaceCatalog`: a list of descriptors and block definitions.
+- `ProviderDescriptor`: names a future provider and the block ids it owns.
+- `Catalog`: a list of descriptors and block definitions.
 
 This keeps the host editable before hook execution exists.
