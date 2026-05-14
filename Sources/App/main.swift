@@ -133,10 +133,13 @@ extension NSWindow {
         backgroundColor = .clear
         hasShadow = false
         level = .screenSaver
-        titleVisibility = .hidden
-        titlebarAppearsTransparent = true
+        isMovable = false
+        isMovableByWindowBackground = false
+        standardWindowButton(.closeButton)?.isHidden = true
+        standardWindowButton(.miniaturizeButton)?.isHidden = true
+        standardWindowButton(.zoomButton)?.isHidden = true
+        styleMask = [.borderless, .fullSizeContentView]
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
-        styleMask.insert(.fullSizeContentView)
         setFrame(targetScreen.frame, display: true)
     }
 }
