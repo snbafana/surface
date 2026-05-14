@@ -123,6 +123,28 @@ struct CoreTests {
         #expect(layout.nextFrame(size: GridSize(width: 4, height: 2)) == GridFrame(x: 4, y: 0, width: 4, height: 2))
     }
 
+    @Test func autoPlacementWrapsToNextRowWhenWidthDoesNotFit() {
+        let layout = Layout(grid: Grid(columns: 6, rows: 4), blocks: [
+            BlockInstance(id: "left", enabled: true, frame: GridFrame(x: 0, y: 0, width: 4, height: 1))
+        ])
+
+        #expect(layout.nextFrame(size: GridSize(width: 3, height: 1)) == GridFrame(x: 0, y: 1, width: 3, height: 1))
+    }
+
+    @Test func autoPlacementAvoidsVerticalIntersection() {
+        let layout = Layout(grid: Grid(columns: 6, rows: 4), blocks: [
+            BlockInstance(id: "tall", enabled: true, frame: GridFrame(x: 0, y: 0, width: 2, height: 3))
+        ])
+
+        #expect(layout.nextFrame(size: GridSize(width: 2, height: 2)) == GridFrame(x: 2, y: 0, width: 2, height: 2))
+    }
+
+    @Test func autoPlacementClampsOversizedRequestedSize() {
+        let layout = Layout(grid: Grid(columns: 5, rows: 3))
+
+        #expect(layout.nextFrame(size: GridSize(width: 50, height: 50)) == GridFrame(x: 0, y: 0, width: 5, height: 3))
+    }
+
     @Test func gridAndSizeValuesClampToMinimumOne() {
         let grid = Grid(columns: 0, rows: -2)
         let size = GridSize(width: 0, height: -5)
@@ -146,6 +168,23 @@ struct CoreTests {
         let decoded = try Store.decode(data)
 
         #expect(decoded == workspace)
+    }
+
+    @Test func disabledBlockPlacementRoundTripsThroughJSON() throws {
+        let workspace = try Workspace(
+            definitions: [
+                BlockDefinition(id: "captures", title: "Captures")
+            ],
+            layout: Layout(blocks: [
+                BlockInstance(id: "captures", enabled: false, frame: GridFrame(x: 3, y: 2, width: 4, height: 3))
+            ])
+        )
+
+        var decoded = try Store.decode(try Store.encode(workspace))
+        try decoded.setEnabled(true, for: "captures")
+
+        #expect(decoded.layout.blocks[0].enabled)
+        #expect(decoded.layout.blocks[0].frame == GridFrame(x: 3, y: 2, width: 4, height: 3))
     }
 
     @Test func pluginBoundaryIsOnlyADescriptorInV0c() {
