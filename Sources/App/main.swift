@@ -20,6 +20,7 @@ struct MainApp: App {
 
 struct SurfaceEditorView: View {
     @State private var workspace = DemoSurface.workspace
+    @State private var mode = SurfaceMode.edit
     @State private var dragging: [BlockID: CGSize] = [:]
     @State private var hoveredBlock: BlockID?
     @State private var menuCorner = OverlayCorner.topLeft
@@ -35,72 +36,94 @@ struct SurfaceEditorView: View {
             let menuOrigin = menuCorner.origin(in: proxy.size, size: menuSize, margin: margin)
 
             ZStack(alignment: .topLeading) {
-                Canvas { context, size in
-                    var path = Path()
-                    for column in 0...grid.columns {
-                        let x = size.width * CGFloat(column) / CGFloat(grid.columns)
-                        path.move(to: CGPoint(x: x, y: 0))
-                        path.addLine(to: CGPoint(x: x, y: size.height))
+                if mode == .edit {
+                    Canvas { context, size in
+                        var path = Path()
+                        for column in 0...grid.columns {
+                            let x = size.width * CGFloat(column) / CGFloat(grid.columns)
+                            path.move(to: CGPoint(x: x, y: 0))
+                            path.addLine(to: CGPoint(x: x, y: size.height))
+                        }
+                        for row in 0...grid.rows {
+                            let y = size.height * CGFloat(row) / CGFloat(grid.rows)
+                            path.move(to: CGPoint(x: 0, y: y))
+                            path.addLine(to: CGPoint(x: size.width, y: y))
+                        }
+                        context.stroke(path, with: .color(.white.opacity(0.10)), lineWidth: 1)
                     }
-                    for row in 0...grid.rows {
-                        let y = size.height * CGFloat(row) / CGFloat(grid.rows)
-                        path.move(to: CGPoint(x: 0, y: y))
-                        path.addLine(to: CGPoint(x: size.width, y: y))
-                    }
-                    context.stroke(path, with: .color(.white.opacity(0.10)), lineWidth: 1)
+                    .ignoresSafeArea()
                 }
-                .ignoresSafeArea()
 
-                HStack(alignment: .top, spacing: 10) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Surface")
-                            .font(.headline)
-                        ForEach(workspace.definitions) { definition in
-                            Toggle(
-                                definition.title,
-                                isOn: Binding(
-                                    get: { workspace.layout.blocks.first(where: { $0.id == definition.id })?.enabled ?? false },
-                                    set: { isEnabled in try? workspace.setEnabled(isEnabled, for: definition.id) }
+                if mode == .edit {
+                    HStack(alignment: .top, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Surface")
+                                .font(.headline)
+                            ForEach(workspace.definitions) { definition in
+                                Toggle(
+                                    definition.title,
+                                    isOn: Binding(
+                                        get: { workspace.layout.blocks.first(where: { $0.id == definition.id })?.enabled ?? false },
+                                        set: { isEnabled in try? workspace.setEnabled(isEnabled, for: definition.id) }
+                                    )
                                 )
-                            )
-                        }
-                    }
-                    Button("Esc") {
-                        NSApp.terminate(nil)
-                    }
-                    .keyboardShortcut(.escape, modifiers: [])
-                    .buttonStyle(.bordered)
-                }
-                .padding(12)
-                .frame(width: menuSize.width, height: menuSize.height, alignment: .topLeading)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(.white.opacity(0.18), lineWidth: 1)
-                }
-                .offset(x: menuOrigin.x + menuDrag.width, y: menuOrigin.y + menuDrag.height)
-                .animation(.smooth(duration: 0.16), value: menuCorner)
-                .animation(.smooth(duration: 0.12), value: menuDrag)
-                .gesture(
-                    DragGesture()
-                        .onChanged { value in
-                            menuDrag = value.translation
-                        }
-                        .onEnded { value in
-                            let point = CGPoint(
-                                x: menuOrigin.x + value.translation.width + menuSize.width / 2,
-                                y: menuOrigin.y + value.translation.height + menuSize.height / 2
-                            )
-                            withAnimation(.smooth(duration: 0.18)) {
-                                menuCorner = OverlayCorner.nearest(to: point, in: proxy.size)
-                                menuDrag = .zero
                             }
                         }
-                )
+                        Button("Use") {
+                            withAnimation(.smooth(duration: 0.18)) {
+                                dragging.removeAll()
+                                hoveredBlock = nil
+                                mode = .use
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        Button("Esc") {
+                            NSApp.terminate(nil)
+                        }
+                        .keyboardShortcut(.escape, modifiers: [])
+                        .buttonStyle(.bordered)
+                    }
+                    .padding(12)
+                    .frame(width: menuSize.width, height: menuSize.height, alignment: .topLeading)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(.white.opacity(0.18), lineWidth: 1)
+                    }
+                    .offset(x: menuOrigin.x + menuDrag.width, y: menuOrigin.y + menuDrag.height)
+                    .animation(.smooth(duration: 0.16), value: menuCorner)
+                    .animation(.smooth(duration: 0.12), value: menuDrag)
+                    .gesture(
+                        DragGesture()
+                            .onChanged { value in
+                                menuDrag = value.translation
+                            }
+                            .onEnded { value in
+                                let point = CGPoint(
+                                    x: menuOrigin.x + value.translation.width + menuSize.width / 2,
+                                    y: menuOrigin.y + value.translation.height + menuSize.height / 2
+                                )
+                                withAnimation(.smooth(duration: 0.18)) {
+                                    menuCorner = OverlayCorner.nearest(to: point, in: proxy.size)
+                                    menuDrag = .zero
+                                }
+                            }
+                    )
+                    .zIndex(10)
+                } else {
+                    Button("Edit") {
+                        withAnimation(.smooth(duration: 0.18)) {
+                            mode = .edit
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .offset(x: 18, y: 18)
+                    .zIndex(10)
+                }
 
                 ForEach(workspace.enabledBlocks) { block in
                     let isDragging = dragging[block.id] != nil
-                    let isActive = hoveredBlock == block.id || isDragging
+                    let isActive = mode == .edit && (hoveredBlock == block.id || isDragging)
 
                     VStack(alignment: .leading, spacing: 6) {
                         Text(title(for: block.id))
@@ -123,7 +146,7 @@ struct SurfaceEditorView: View {
                             .stroke(.white.opacity(isActive ? 0.30 : 0.14), lineWidth: 1)
                     }
                     .overlay(alignment: .topTrailing) {
-                        if isDragging {
+                        if mode == .edit && isDragging {
                             Circle()
                                 .fill(.white.opacity(0.85))
                                 .frame(width: 8, height: 8)
@@ -131,7 +154,7 @@ struct SurfaceEditorView: View {
                         }
                     }
                     .overlay(alignment: .bottomTrailing) {
-                        if isDragging {
+                        if mode == .edit && isDragging {
                             Circle()
                                 .fill(.white.opacity(0.85))
                                 .frame(width: 8, height: 8)
@@ -139,7 +162,7 @@ struct SurfaceEditorView: View {
                         }
                     }
                     .overlay(alignment: .bottomLeading) {
-                        if isDragging {
+                        if mode == .edit && isDragging {
                             Circle()
                                 .fill(.white.opacity(0.85))
                                 .frame(width: 8, height: 8)
@@ -157,14 +180,17 @@ struct SurfaceEditorView: View {
                     .animation(.smooth(duration: 0.12), value: dragging[block.id] ?? .zero)
                     .animation(.smooth(duration: 0.12), value: hoveredBlock)
                     .onHover { isHovering in
+                        guard mode == .edit else { return }
                         hoveredBlock = isHovering ? block.id : (hoveredBlock == block.id ? nil : hoveredBlock)
                     }
                     .gesture(
                         DragGesture()
                             .onChanged { value in
+                                guard mode == .edit else { return }
                                 dragging[block.id] = value.translation
                             }
                             .onEnded { value in
+                                guard mode == .edit else { return }
                                 let x = block.frame.origin.x + Int((value.translation.width / cellWidth).rounded())
                                 let y = block.frame.origin.y + Int((value.translation.height / cellHeight).rounded())
                                 withAnimation(.smooth(duration: 0.18)) {
@@ -181,6 +207,11 @@ struct SurfaceEditorView: View {
     private func title(for id: BlockID) -> String {
         workspace.definitions.first(where: { $0.id == id })?.title ?? id.rawValue
     }
+}
+
+enum SurfaceMode {
+    case edit
+    case use
 }
 
 enum OverlayCorner {
