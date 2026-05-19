@@ -73,9 +73,9 @@ public struct Layout: Hashable, Codable, Identifiable, Sendable {
     public var id: String
     public var title: String
     public var grid: Grid
-    public var blocks: [BlockInstance]
+    public var blocks: [Block.Instance]
 
-    public init(id: String = "default", title: String = "Default", grid: Grid = Grid(), blocks: [BlockInstance] = []) {
+    public init(id: String = "default", title: String = "Default", grid: Grid = Grid(), blocks: [Block.Instance] = []) {
         self.id = id
         self.title = title
         self.grid = grid

@@ -9,11 +9,11 @@ public enum Store {
 
     public static let decoder = JSONDecoder()
 
-    public static func encode(_ workspace: Workspace) throws -> Data {
-        try encoder.encode(workspace)
+    public static func encode(_ layout: Layout) throws -> Data {
+        try encoder.encode(layout)
     }
 
-    public static func decode(_ data: Data) throws -> Workspace {
-        try decoder.decode(Workspace.self, from: data)
+    public static func decode(_ data: Data) throws -> Layout {
+        try decoder.decode(Layout.self, from: data)
     }
 }

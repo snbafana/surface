@@ -6,9 +6,10 @@ Surface is an editable local control surface. The core object is a block layout,
 
 The minimum model is:
 
-- `BlockDefinition`: a possible block type, such as command, captures, status, or daily note.
-- `BlockInstance`: the singleton instance of that block type in a layout.
-- `Workspace`: the available block definitions plus the active layout.
+- `Block`: a possible block type, such as quicksave, copy history, or codex log.
+- `Block.Instance`: the singleton placement of that block in a layout.
+- `BlockRuntime`: the live object backing an enabled block.
+- `Workspace`: the available blocks plus the active layout.
 
 Rules:
 
@@ -25,7 +26,7 @@ The layout model uses a simple integer grid:
 - `GridFrame`: block origin plus size in grid units.
 - Movement is snapped by writing integer grid coordinates.
 - Movement is clamped inside the grid.
-- Persistence is plain JSON through `Store`.
+- Persistence stores `Layout` as plain JSON through `Store`.
 
 This is intentionally enough for the first visual editor and no more.
 
@@ -33,10 +34,10 @@ This is intentionally enough for the first visual editor and no more.
 
 Surface does not have a separate plugin/provider layer. A block type is the unit of extension.
 
-The app registry maps block ids to executable block implementations:
+`plugins/Blocks.swift` maps block ids to executable block implementations. Plugin folders are packaging boundaries that contribute blocks:
 
-- `BlockDefinition`: catalog/layout metadata for a block type.
-- `BlockType`: app-side rendering, action, cached-state, and refresh hooks for a block type.
+- `Block`: catalog/layout metadata plus a runtime factory.
+- `BlockRuntime`: start, stop, refresh, and SwiftUI view behavior for a live block.
 - `BlockRegistry`: the active directory of available block types.
 
 The workspace and layout only store block ids, enabled state, and frames. The registry supplies the UI and runtime behavior for each known block id.

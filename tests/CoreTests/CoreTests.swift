@@ -1,81 +1,84 @@
 import Foundation
+import SwiftUI
 import Testing
 @testable import Core
 
 @Suite("Surface block model")
 struct CoreTests {
-    @Test func workspaceAllowsOneInstancePerBlockDefinition() throws {
-        let definitions = [
-            BlockDefinition(id: "command", title: "Command")
-        ]
-        let layout = Layout(blocks: [
-            BlockInstance(id: "command", frame: GridFrame(x: 0, y: 0, width: 4, height: 2))
-        ])
+    @Test func workspaceAllowsOneInstancePerBlock() throws {
+        let workspace = try Workspace(
+            blocks: [testBlock(id: "quicksave")],
+            layout: Layout(blocks: [
+                Block.Instance(id: "quicksave", frame: GridFrame(x: 0, y: 0, width: 4, height: 2))
+            ])
+        )
 
-        let workspace = try Workspace(definitions: definitions, layout: layout)
-
-        #expect(workspace.enabledBlocks.map(\.id) == ["command"])
+        #expect(workspace.enabledBlocks.map(\.id) == ["quicksave"])
     }
 
     @Test func duplicateBlockInstancesAreRejected() throws {
-        let definitions = [
-            BlockDefinition(id: "command", title: "Command")
-        ]
         let layout = Layout(blocks: [
-            BlockInstance(id: "command", frame: GridFrame(x: 0, y: 0, width: 4, height: 2)),
-            BlockInstance(id: "command", frame: GridFrame(x: 4, y: 0, width: 4, height: 2))
+            Block.Instance(id: "quicksave", frame: GridFrame(x: 0, y: 0, width: 4, height: 2)),
+            Block.Instance(id: "quicksave", frame: GridFrame(x: 4, y: 0, width: 4, height: 2))
         ])
 
-        #expect(throws: ModelError.duplicateBlock("command")) {
-            _ = try Workspace(definitions: definitions, layout: layout)
+        #expect(throws: ModelError.duplicateBlock("quicksave")) {
+            _ = try Workspace(blocks: [testBlock(id: "quicksave")], layout: layout)
         }
     }
 
-    @Test func duplicateDefinitionsAreRejected() {
-        let definitions = [
-            BlockDefinition(id: "command", title: "Command"),
-            BlockDefinition(id: "command", title: "Command Copy")
-        ]
+    @Test func duplicateBlocksAreRejectedByRegistry() {
+        #expect(throws: ModelError.duplicateBlock("quicksave")) {
+            _ = try BlockRegistry([
+                testBlock(id: "quicksave"),
+                testBlock(id: "quicksave", title: "Quicksave Copy")
+            ])
+        }
+    }
 
-        #expect(throws: ModelError.duplicateDefinition) {
-            _ = try Workspace(definitions: definitions, layout: Layout())
+    @Test func duplicateBlocksAreRejectedByWorkspace() {
+        #expect(throws: ModelError.duplicateBlock("quicksave")) {
+            _ = try Workspace(
+                blocks: [
+                    testBlock(id: "quicksave"),
+                    testBlock(id: "quicksave", title: "Quicksave Copy")
+                ],
+                layout: Layout()
+            )
         }
     }
 
     @Test func unknownBlocksAreRejected() {
         let layout = Layout(blocks: [
-            BlockInstance(id: "missing", frame: GridFrame(x: 0, y: 0, width: 4, height: 2))
+            Block.Instance(id: "missing", frame: GridFrame(x: 0, y: 0, width: 4, height: 2))
         ])
 
         #expect(throws: ModelError.unknownBlock("missing")) {
-            _ = try Workspace(definitions: [], layout: layout)
+            _ = try Workspace(blocks: [], layout: layout)
         }
     }
 
     @Test func blocksOutsideTheGridAreRejected() {
         let layout = Layout(grid: Grid(columns: 4, rows: 4), blocks: [
-            BlockInstance(id: "command", frame: GridFrame(x: 3, y: 3, width: 2, height: 2))
+            Block.Instance(id: "quicksave", frame: GridFrame(x: 3, y: 3, width: 2, height: 2))
         ])
 
-        #expect(throws: ModelError.blockOutsideGrid("command")) {
-            _ = try Workspace(
-                definitions: [BlockDefinition(id: "command", title: "Command")],
-                layout: layout
-            )
+        #expect(throws: ModelError.blockOutsideGrid("quicksave")) {
+            _ = try Workspace(blocks: [testBlock(id: "quicksave")], layout: layout)
         }
     }
 
     @Test func overlappingEnabledBlocksAreRejected() {
         let layout = Layout(blocks: [
-            BlockInstance(id: "captures", frame: GridFrame(x: 0, y: 0, width: 4, height: 3)),
-            BlockInstance(id: "status", frame: GridFrame(x: 2, y: 1, width: 4, height: 3))
+            Block.Instance(id: "copyhistory", frame: GridFrame(x: 0, y: 0, width: 4, height: 3)),
+            Block.Instance(id: "codexlog", frame: GridFrame(x: 2, y: 1, width: 4, height: 3))
         ])
 
-        #expect(throws: ModelError.overlappingBlocks("captures", "status")) {
+        #expect(throws: ModelError.overlappingBlocks("copyhistory", "codexlog")) {
             _ = try Workspace(
-                definitions: [
-                    BlockDefinition(id: "captures", title: "Captures"),
-                    BlockDefinition(id: "status", title: "Status")
+                blocks: [
+                    testBlock(id: "copyhistory"),
+                    testBlock(id: "codexlog")
                 ],
                 layout: layout
             )
@@ -84,13 +87,13 @@ struct CoreTests {
 
     @Test func overlappingDisabledBlocksAreAllowed() throws {
         let workspace = try Workspace(
-            definitions: [
-                BlockDefinition(id: "captures", title: "Captures"),
-                BlockDefinition(id: "status", title: "Status")
+            blocks: [
+                testBlock(id: "copyhistory"),
+                testBlock(id: "codexlog")
             ],
             layout: Layout(blocks: [
-                BlockInstance(id: "captures", enabled: false, frame: GridFrame(x: 0, y: 0, width: 4, height: 3)),
-                BlockInstance(id: "status", enabled: false, frame: GridFrame(x: 2, y: 1, width: 4, height: 3))
+                Block.Instance(id: "copyhistory", enabled: false, frame: GridFrame(x: 0, y: 0, width: 4, height: 3)),
+                Block.Instance(id: "codexlog", enabled: false, frame: GridFrame(x: 2, y: 1, width: 4, height: 3))
             ])
         )
 
@@ -99,11 +102,11 @@ struct CoreTests {
 
     @Test func enablingBlockCreatesAClampedInstance() throws {
         var workspace = try Workspace(
-            definitions: [BlockDefinition(id: "status", title: "Status", defaultSize: GridSize(width: 20, height: 20))],
+            blocks: [testBlock(id: "codexlog", defaultSize: GridSize(width: 20, height: 20))],
             layout: Layout(grid: Grid(columns: 12, rows: 8))
         )
 
-        try workspace.setEnabled(true, for: "status")
+        try workspace.setEnabled(true, for: "codexlog")
 
         #expect(workspace.layout.blocks.count == 1)
         #expect(workspace.layout.blocks[0].frame.origin == GridPoint(x: 0, y: 0))
@@ -112,61 +115,61 @@ struct CoreTests {
 
     @Test func moveBlockSnapsInsideGridBounds() throws {
         var workspace = try Workspace(
-            definitions: [BlockDefinition(id: "captures", title: "Captures", defaultSize: GridSize(width: 4, height: 3))],
+            blocks: [testBlock(id: "copyhistory", defaultSize: GridSize(width: 4, height: 3))],
             layout: Layout(blocks: [
-                BlockInstance(id: "captures", frame: GridFrame(x: 0, y: 0, width: 4, height: 3))
+                Block.Instance(id: "copyhistory", frame: GridFrame(x: 0, y: 0, width: 4, height: 3))
             ])
         )
 
-        try workspace.moveBlock("captures", to: GridPoint(x: 99, y: 99))
+        try workspace.moveBlock("copyhistory", to: GridPoint(x: 99, y: 99))
 
         #expect(workspace.layout.blocks[0].frame.origin == GridPoint(x: 8, y: 5))
     }
 
     @Test func moveBlockStopsAtNearestOpenFrameBeforeOverlap() throws {
         var workspace = try Workspace(
-            definitions: [
-                BlockDefinition(id: "captures", title: "Captures"),
-                BlockDefinition(id: "status", title: "Status")
+            blocks: [
+                testBlock(id: "copyhistory"),
+                testBlock(id: "codexlog")
             ],
             layout: Layout(blocks: [
-                BlockInstance(id: "captures", frame: GridFrame(x: 0, y: 0, width: 4, height: 3)),
-                BlockInstance(id: "status", frame: GridFrame(x: 6, y: 0, width: 4, height: 3))
+                Block.Instance(id: "copyhistory", frame: GridFrame(x: 0, y: 0, width: 4, height: 3)),
+                Block.Instance(id: "codexlog", frame: GridFrame(x: 6, y: 0, width: 4, height: 3))
             ])
         )
 
-        try workspace.moveBlock("status", to: GridPoint(x: 2, y: 1))
+        try workspace.moveBlock("codexlog", to: GridPoint(x: 2, y: 1))
 
-        #expect(workspace.layout.blocks.first(where: { $0.id == "status" })?.frame == GridFrame(x: 4, y: 1, width: 4, height: 3))
+        #expect(workspace.layout.blocks.first(where: { $0.id == "codexlog" })?.frame == GridFrame(x: 4, y: 1, width: 4, height: 3))
     }
 
     @Test func moveBlockKeepsLastReachableFrameOnBlockedDiagonalDrag() throws {
         var workspace = try Workspace(
-            definitions: [
-                BlockDefinition(id: "captures", title: "Captures"),
-                BlockDefinition(id: "status", title: "Status")
+            blocks: [
+                testBlock(id: "copyhistory"),
+                testBlock(id: "codexlog", defaultSize: GridSize(width: 3, height: 2))
             ],
             layout: Layout(grid: Grid(columns: 12, rows: 8), blocks: [
-                BlockInstance(id: "captures", frame: GridFrame(x: 4, y: 3, width: 4, height: 3)),
-                BlockInstance(id: "status", frame: GridFrame(x: 0, y: 0, width: 3, height: 2))
+                Block.Instance(id: "copyhistory", frame: GridFrame(x: 4, y: 3, width: 4, height: 3)),
+                Block.Instance(id: "codexlog", frame: GridFrame(x: 0, y: 0, width: 3, height: 2))
             ])
         )
 
-        try workspace.moveBlock("status", to: GridPoint(x: 5, y: 4))
+        try workspace.moveBlock("codexlog", to: GridPoint(x: 5, y: 4))
 
-        #expect(workspace.layout.blocks.first(where: { $0.id == "status" })?.frame == GridFrame(x: 1, y: 1, width: 3, height: 2))
+        #expect(workspace.layout.blocks.first(where: { $0.id == "codexlog" })?.frame == GridFrame(x: 1, y: 1, width: 3, height: 2))
     }
 
     @Test func disablingAndReenablingBlockPreservesPlacement() throws {
         var workspace = try Workspace(
-            definitions: [BlockDefinition(id: "captures", title: "Captures")],
+            blocks: [testBlock(id: "copyhistory")],
             layout: Layout(blocks: [
-                BlockInstance(id: "captures", frame: GridFrame(x: 5, y: 2, width: 4, height: 3))
+                Block.Instance(id: "copyhistory", frame: GridFrame(x: 5, y: 2, width: 4, height: 3))
             ])
         )
 
-        try workspace.setEnabled(false, for: "captures")
-        try workspace.setEnabled(true, for: "captures")
+        try workspace.setEnabled(false, for: "copyhistory")
+        try workspace.setEnabled(true, for: "copyhistory")
 
         #expect(workspace.layout.blocks.count == 1)
         #expect(workspace.layout.blocks[0].enabled)
@@ -175,24 +178,24 @@ struct CoreTests {
 
     @Test func reenablingBlockMovesToOpenSlotWhenSavedPlacementIsOccupied() throws {
         var workspace = try Workspace(
-            definitions: [
-                BlockDefinition(id: "captures", title: "Captures"),
-                BlockDefinition(id: "status", title: "Status")
+            blocks: [
+                testBlock(id: "copyhistory"),
+                testBlock(id: "codexlog")
             ],
             layout: Layout(grid: Grid(columns: 8, rows: 4), blocks: [
-                BlockInstance(id: "captures", enabled: false, frame: GridFrame(x: 0, y: 0, width: 4, height: 2)),
-                BlockInstance(id: "status", enabled: true, frame: GridFrame(x: 0, y: 0, width: 4, height: 2))
+                Block.Instance(id: "copyhistory", enabled: false, frame: GridFrame(x: 0, y: 0, width: 4, height: 2)),
+                Block.Instance(id: "codexlog", enabled: true, frame: GridFrame(x: 0, y: 0, width: 4, height: 2))
             ])
         )
 
-        try workspace.setEnabled(true, for: "captures")
+        try workspace.setEnabled(true, for: "copyhistory")
 
-        #expect(workspace.layout.blocks.first(where: { $0.id == "captures" })?.frame == GridFrame(x: 4, y: 0, width: 4, height: 2))
+        #expect(workspace.layout.blocks.first(where: { $0.id == "copyhistory" })?.frame == GridFrame(x: 4, y: 0, width: 4, height: 2))
     }
 
     @Test func disabledBlocksDoNotReserveAutoPlacementSpace() throws {
         let layout = Layout(grid: Grid(columns: 8, rows: 4), blocks: [
-            BlockInstance(id: "captures", enabled: false, frame: GridFrame(x: 0, y: 0, width: 4, height: 2))
+            Block.Instance(id: "copyhistory", enabled: false, frame: GridFrame(x: 0, y: 0, width: 4, height: 2))
         ])
 
         #expect(layout.nextFrame(size: GridSize(width: 4, height: 2)) == GridFrame(x: 0, y: 0, width: 4, height: 2))
@@ -200,7 +203,7 @@ struct CoreTests {
 
     @Test func enabledBlocksReserveAutoPlacementSpace() throws {
         let layout = Layout(grid: Grid(columns: 8, rows: 4), blocks: [
-            BlockInstance(id: "captures", enabled: true, frame: GridFrame(x: 0, y: 0, width: 4, height: 2))
+            Block.Instance(id: "copyhistory", enabled: true, frame: GridFrame(x: 0, y: 0, width: 4, height: 2))
         ])
 
         #expect(layout.nextFrame(size: GridSize(width: 4, height: 2)) == GridFrame(x: 4, y: 0, width: 4, height: 2))
@@ -208,7 +211,7 @@ struct CoreTests {
 
     @Test func autoPlacementWrapsToNextRowWhenWidthDoesNotFit() {
         let layout = Layout(grid: Grid(columns: 6, rows: 4), blocks: [
-            BlockInstance(id: "left", enabled: true, frame: GridFrame(x: 0, y: 0, width: 4, height: 1))
+            Block.Instance(id: "left", enabled: true, frame: GridFrame(x: 0, y: 0, width: 4, height: 1))
         ])
 
         #expect(layout.nextFrame(size: GridSize(width: 3, height: 1)) == GridFrame(x: 0, y: 1, width: 3, height: 1))
@@ -216,7 +219,7 @@ struct CoreTests {
 
     @Test func autoPlacementAvoidsVerticalIntersection() {
         let layout = Layout(grid: Grid(columns: 6, rows: 4), blocks: [
-            BlockInstance(id: "tall", enabled: true, frame: GridFrame(x: 0, y: 0, width: 2, height: 3))
+            Block.Instance(id: "tall", enabled: true, frame: GridFrame(x: 0, y: 0, width: 2, height: 3))
         ])
 
         #expect(layout.nextFrame(size: GridSize(width: 2, height: 2)) == GridFrame(x: 2, y: 0, width: 2, height: 2))
@@ -237,37 +240,45 @@ struct CoreTests {
         #expect(size == GridSize(width: 1, height: 1))
     }
 
-    @Test func workspaceRoundTripsThroughJSON() throws {
-        let workspace = try Workspace(
-            definitions: [
-                BlockDefinition(id: "command", title: "Command", defaultSize: GridSize(width: 8, height: 2))
-            ],
-            layout: Layout(blocks: [
-                BlockInstance(id: "command", enabled: true, frame: GridFrame(x: 2, y: 1, width: 8, height: 2))
-            ])
-        )
+    @Test func layoutRoundTripsThroughJSON() throws {
+        let layout = Layout(blocks: [
+            Block.Instance(id: "quicksave", enabled: true, frame: GridFrame(x: 2, y: 1, width: 8, height: 2))
+        ])
 
-        let data = try Store.encode(workspace)
+        let data = try Store.encode(layout)
         let decoded = try Store.decode(data)
 
-        #expect(decoded == workspace)
+        #expect(decoded == layout)
     }
 
     @Test func disabledBlockPlacementRoundTripsThroughJSON() throws {
-        let workspace = try Workspace(
-            definitions: [
-                BlockDefinition(id: "captures", title: "Captures")
-            ],
-            layout: Layout(blocks: [
-                BlockInstance(id: "captures", enabled: false, frame: GridFrame(x: 3, y: 2, width: 4, height: 3))
-            ])
+        let layout = Layout(blocks: [
+            Block.Instance(id: "copyhistory", enabled: false, frame: GridFrame(x: 3, y: 2, width: 4, height: 3))
+        ])
+
+        var workspace = try Workspace(
+            blocks: [testBlock(id: "copyhistory")],
+            layout: try Store.decode(try Store.encode(layout))
         )
+        try workspace.setEnabled(true, for: "copyhistory")
 
-        var decoded = try Store.decode(try Store.encode(workspace))
-        try decoded.setEnabled(true, for: "captures")
-
-        #expect(decoded.layout.blocks[0].enabled)
-        #expect(decoded.layout.blocks[0].frame == GridFrame(x: 3, y: 2, width: 4, height: 3))
+        #expect(workspace.layout.blocks[0].enabled)
+        #expect(workspace.layout.blocks[0].frame == GridFrame(x: 3, y: 2, width: 4, height: 3))
     }
+}
 
+private func testBlock(id: BlockID, title: String? = nil, defaultSize: GridSize = GridSize(width: 4, height: 3)) -> Block {
+    Block(id: id, title: title ?? id.rawValue, defaultSize: defaultSize) { _ in
+        TestRuntime()
+    }
+}
+
+@MainActor
+private final class TestRuntime: BlockRuntime {
+    func start() {}
+    func stop() {}
+    func refresh() async {}
+    func makeView() -> AnyView {
+        AnyView(EmptyView())
+    }
 }
