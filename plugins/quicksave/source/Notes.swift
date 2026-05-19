@@ -81,7 +81,7 @@ final class ContextNoteWriter {
         }
     }
 
-    func save(note: String, for savedURLs: [URL], in inboxDirectory: URL) throws -> URL {
+    func save(note: String, for savedURLs: [URL], in inboxDirectory: URL, now: Date = Date()) throws -> URL {
         let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             throw ContextNoteError.emptyNote
@@ -90,16 +90,17 @@ final class ContextNoteWriter {
         try fileManager.createDirectory(at: inboxDirectory, withIntermediateDirectories: true)
         let destination = FileNaming.uniqueURL(
             in: inboxDirectory,
-            preferredName: noteFileName(for: savedURLs),
+            preferredName: noteFileName(for: savedURLs, now: now),
             fileManager: fileManager
         )
         try Data(trimmed.utf8).write(to: destination, options: [.atomic])
+        try fileManager.setAttributes([.modificationDate: now], ofItemAtPath: destination.path)
         return destination
     }
 
-    private func noteFileName(for savedURLs: [URL]) -> String {
+    private func noteFileName(for savedURLs: [URL], now: Date) -> String {
         guard savedURLs.count == 1, let target = savedURLs.first else {
-            return "\(FileNaming.timestamp())-note.txt"
+            return "\(FileNaming.timestamp(now))-note.txt"
         }
 
         var isDirectory: ObjCBool = false
@@ -130,6 +131,8 @@ struct QuicksaveNote: Identifiable, Equatable, Sendable {
     let text: String
     let modifiedAt: Date
     let captureName: String?
+    let captureURL: URL?
+    let captureKind: String?
 }
 
 struct QuicksaveHistory {
@@ -149,7 +152,18 @@ struct QuicksaveHistory {
         let start = calendar.startOfDay(for: now)
         let end = calendar.date(byAdding: .day, value: 1, to: start) ?? now
 
-        return try fileManager.contentsOfDirectory(
+        return try noteFiles(in: inboxDirectory)
+            .filter { $0.modifiedAt >= start && $0.modifiedAt < end }
+            .sorted { lhs, rhs in
+                if lhs.modifiedAt == rhs.modifiedAt {
+                    return lhs.url.lastPathComponent < rhs.url.lastPathComponent
+                }
+                return lhs.modifiedAt > rhs.modifiedAt
+            }
+    }
+
+    private func noteFiles(in inboxDirectory: URL) throws -> [QuicksaveNote] {
+        try fileManager.contentsOfDirectory(
             at: inboxDirectory,
             includingPropertiesForKeys: [.contentModificationDateKey],
             options: [.skipsHiddenFiles]
@@ -157,25 +171,21 @@ struct QuicksaveHistory {
         .filter(ContextNoteWriter.isNoteFile)
         .compactMap { url in
             guard let modifiedAt = modificationDate(for: url),
-                  modifiedAt >= start,
-                  modifiedAt < end,
                   let text = try? String(contentsOf: url, encoding: .utf8)
                     .trimmingCharacters(in: .whitespacesAndNewlines),
                   !text.isEmpty else {
                 return nil
             }
+            let captureName = captureName(for: url)
+            let captureURL = captureURL(in: inboxDirectory, captureName: captureName)
             return QuicksaveNote(
                 url: url,
                 text: text,
                 modifiedAt: modifiedAt,
-                captureName: captureName(for: url)
+                captureName: captureName,
+                captureURL: captureURL,
+                captureKind: captureURL.map(captureKind)
             )
-        }
-        .sorted { lhs, rhs in
-            if lhs.modifiedAt == rhs.modifiedAt {
-                return lhs.url.lastPathComponent < rhs.url.lastPathComponent
-            }
-            return lhs.modifiedAt > rhs.modifiedAt
         }
     }
 
@@ -192,5 +202,35 @@ struct QuicksaveHistory {
             return String(name[..<range.lowerBound])
         }
         return nil
+    }
+
+    private func captureURL(in inboxDirectory: URL, captureName: String?) -> URL? {
+        guard let captureName else {
+            return nil
+        }
+
+        return try? fileManager.contentsOfDirectory(
+            at: inboxDirectory,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        )
+        .first { url in
+            !ContextNoteWriter.isNoteFile(url) && url.deletingPathExtension().lastPathComponent == captureName
+        }
+    }
+
+    private func captureKind(for url: URL) -> String {
+        switch url.pathExtension.lowercased() {
+        case "png", "jpg", "jpeg", "heic", "tiff":
+            return "image"
+        case "pdf":
+            return "pdf"
+        case "md":
+            return "markdown"
+        case "txt":
+            return "text"
+        default:
+            return url.pathExtension.isEmpty ? "file" : url.pathExtension.lowercased()
+        }
     }
 }

@@ -210,10 +210,10 @@ enum ClipboardCaptureError: LocalizedError {
 }
 
 enum FileNaming {
-    static func timestamp() -> String {
+    static func timestamp(_ date: Date = Date()) -> String {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter.string(from: Date()).replacingOccurrences(of: ":", with: "-")
+        return formatter.string(from: date).replacingOccurrences(of: ":", with: "-")
     }
 
     static func uniqueURL(in directory: URL, preferredName: String, fileManager: FileManager = .default) -> URL {

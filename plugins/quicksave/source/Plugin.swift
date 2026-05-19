@@ -18,6 +18,7 @@ final class Runtime: ObservableObject, BlockRuntime {
     @Published var noteText = ""
     @Published private(set) var notes: [QuicksaveNote] = []
     @Published private(set) var status = "Ready"
+    @Published private(set) var lastSavedAt: Date?
 
     private let context: Block.Context
     private let capture = ClipboardCapture()
@@ -75,13 +76,20 @@ final class Runtime: ObservableObject, BlockRuntime {
     func saveNote() {
         let targets = latestCaptureTargets()
         do {
-            _ = try noteWriter.save(note: noteText, for: targets, in: inboxURL)
+            let now = context.now ?? Date()
+            _ = try noteWriter.save(note: noteText, for: targets, in: inboxURL, now: now)
             noteText = ""
-            status = targets.isEmpty ? "Saved note" : "Saved note for \(targets[0].lastPathComponent)"
+            lastSavedAt = now
+            status = targets.isEmpty ? "Saved note" : "Saved note with capture"
             reloadNotes()
         } catch {
             status = error.localizedDescription
         }
+    }
+
+    func clearDraft() {
+        noteText = ""
+        status = "Draft cleared"
     }
 
     func openInbox() {
@@ -138,6 +146,27 @@ final class Runtime: ObservableObject, BlockRuntime {
         }
         return "Saved \(result.savedURLs.count) items"
     }
+
+    var noteCountText: String {
+        "\(notes.count) \(notes.count == 1 ? "note" : "notes") today"
+    }
+
+    var latestNoteText: String {
+        guard let latest = notes.first else {
+            return "No notes today"
+        }
+        let now = context.now ?? Date()
+        if abs(latest.modifiedAt.timeIntervalSince(now)) < 60 {
+            return "Last note just now"
+        }
+        return "Last note \(Self.relativeFormatter.localizedString(for: latest.modifiedAt, relativeTo: now))"
+    }
+
+    private static let relativeFormatter: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .short
+        return formatter
+    }()
 }
 
 private struct ContentView: View {
@@ -145,7 +174,7 @@ private struct ContentView: View {
     private var canSave: Bool { !runtime.noteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 9) {
             header
             composer
             recentNotes
@@ -163,6 +192,10 @@ private struct ContentView: View {
                 .padding(.vertical, 5)
                 .background(QuickCaptureStyle.softFill, in: Capsule())
 
+            Text(runtime.noteCountText)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(QuickCaptureStyle.mutedText)
+
             Spacer(minLength: 10)
 
             iconButton("Capture clipboard", systemName: "doc.on.clipboard") {
@@ -175,7 +208,7 @@ private struct ContentView: View {
     }
 
     private var composer: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 7) {
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $runtime.noteText)
                     .font(QuickCaptureStyle.bodyFont)
@@ -185,7 +218,7 @@ private struct ContentView: View {
                     .padding(.vertical, 7)
 
                 if runtime.noteText.isEmpty {
-                    Text("Write a note for the latest capture")
+                    Text("Add a note...")
                         .font(QuickCaptureStyle.bodyFont)
                         .foregroundStyle(QuickCaptureStyle.subtleText)
                         .padding(.horizontal, 13)
@@ -193,7 +226,7 @@ private struct ContentView: View {
                         .allowsHitTesting(false)
                 }
             }
-            .frame(minHeight: 92)
+            .frame(height: 70)
             .quickCaptureCard(fill: QuickCaptureStyle.inputFill, stroke: QuickCaptureStyle.inputStroke)
 
             HStack(spacing: 10) {
@@ -210,11 +243,25 @@ private struct ContentView: View {
                 .foregroundStyle(canSave ? .white : QuickCaptureStyle.disabledText)
                 .disabled(!canSave)
 
-                Spacer()
-
-                Text("\(runtime.notes.count) today")
-                    .font(.caption.weight(.medium))
+                if canSave {
+                    Button {
+                        runtime.clearDraft()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 11, weight: .semibold))
+                            .frame(width: 26, height: 26)
+                    }
+                    .buttonStyle(.plain)
                     .foregroundStyle(QuickCaptureStyle.mutedText)
+                    .help("Clear draft")
+                }
+
+                Text(runtime.latestNoteText)
+                    .font(.caption)
+                    .foregroundStyle(QuickCaptureStyle.mutedText)
+                    .lineLimit(1)
+
+                Spacer()
             }
         }
     }
@@ -222,14 +269,14 @@ private struct ContentView: View {
     private var recentNotes: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("Recent")
+                Text("Today")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(QuickCaptureStyle.secondaryText)
                 Spacer()
             }
 
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 8) {
+            ScrollView(showsIndicators: false) {
+                LazyVStack(alignment: .leading, spacing: 0) {
                     if runtime.notes.isEmpty {
                         EmptyState()
                     } else {
@@ -265,8 +312,8 @@ private struct NoteRow: View {
                 Text(timeString)
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(QuickCaptureStyle.secondaryText)
-                if let captureName = note.captureName {
-                    Text(displayName(for: captureName))
+                if let contextLabel {
+                    Text(contextLabel)
                         .font(.caption2)
                         .foregroundStyle(QuickCaptureStyle.mutedText)
                         .lineLimit(1)
@@ -276,16 +323,29 @@ private struct NoteRow: View {
             Text(note.text)
                 .font(QuickCaptureStyle.noteFont)
                 .foregroundStyle(QuickCaptureStyle.primaryText)
-                .lineLimit(4)
+                .lineLimit(3)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.vertical, 8)
-        .padding(.horizontal, 10)
-        .quickCaptureCard(fill: QuickCaptureStyle.rowFill, stroke: QuickCaptureStyle.rowStroke)
+        .padding(.vertical, 9)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(QuickCaptureStyle.rowStroke)
+                .frame(height: 1)
+        }
     }
 
     private var timeString: String {
         Self.timeFormatter.string(from: note.modifiedAt)
+    }
+
+    private var contextLabel: String? {
+        if let kind = note.captureKind {
+            return kind
+        }
+        guard let captureName = note.captureName else {
+            return nil
+        }
+        return displayName(for: captureName)
     }
 
     private func displayName(for captureName: String) -> String {
@@ -295,6 +355,9 @@ private struct NoteRow: View {
         }
         name = name.replacingOccurrences(of: "-00.000Z", with: "")
         name = name.replacingOccurrences(of: "-", with: ":")
+        if name.range(of: #"^\d{2}:\d{2}(:\d{2})?(\.\d+Z)?$"#, options: .regularExpression) != nil {
+            return "capture"
+        }
         return name.isEmpty ? "Capture" : name
     }
 

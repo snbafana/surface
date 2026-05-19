@@ -50,19 +50,57 @@ struct QuicksaveTests {
         let fixture = try QuicksaveFixture()
         let captureURL = fixture.inboxURL.appendingPathComponent("capture.txt")
         try "saved".write(to: captureURL, atomically: true, encoding: .utf8)
+        let now = Date()
 
-        let noteURL = try ContextNoteWriter().save(note: "today note", for: [captureURL], in: fixture.inboxURL)
-        let oldNoteURL = try ContextNoteWriter().save(note: "old note", for: [], in: fixture.inboxURL)
-        try FileManager.default.setAttributes(
-            [.modificationDate: Date().addingTimeInterval(-172_800)],
-            ofItemAtPath: oldNoteURL.path
+        let noteURL = try ContextNoteWriter().save(note: "today note", for: [captureURL], in: fixture.inboxURL, now: now)
+        _ = try ContextNoteWriter().save(
+            note: "old note",
+            for: [],
+            in: fixture.inboxURL,
+            now: now.addingTimeInterval(-172_800)
         )
 
-        let notes = try QuicksaveHistory().todayNotes(in: fixture.inboxURL)
+        let notes = try QuicksaveHistory().todayNotes(in: fixture.inboxURL, now: now)
 
         #expect(noteURL.lastPathComponent == "capture.note.txt")
         #expect(notes.map(\.text) == ["today note"])
         #expect(notes.first?.captureName == "capture")
+        #expect(notes.first?.captureURL?.resolvingSymlinksInPath() == captureURL.resolvingSymlinksInPath())
+        #expect(notes.first?.captureKind == "text")
+    }
+
+    @Test func savesStandaloneNotesToFileHistory() throws {
+        let fixture = try QuicksaveFixture()
+        let now = Date(timeIntervalSince1970: 1_764_077_400)
+
+        let firstURL = try ContextNoteWriter().save(note: "first note", for: [], in: fixture.inboxURL, now: now)
+        let secondURL = try ContextNoteWriter().save(
+            note: "second note",
+            for: [],
+            in: fixture.inboxURL,
+            now: now.addingTimeInterval(60)
+        )
+        let notes = try QuicksaveHistory().todayNotes(in: fixture.inboxURL, now: now)
+
+        #expect(firstURL.lastPathComponent.hasSuffix("-note.txt"))
+        #expect(secondURL.lastPathComponent.hasSuffix("-note.txt"))
+        #expect(notes.map(\.text) == ["second note", "first note"])
+        #expect(notes.allSatisfy { $0.captureName == nil })
+    }
+
+    @Test func resolvesImageCaptureForSidecarNote() throws {
+        let fixture = try QuicksaveFixture()
+        let now = Date()
+        let imageURL = fixture.inboxURL.appendingPathComponent("capture.png")
+        try Data([0x89, 0x50, 0x4e, 0x47]).write(to: imageURL)
+
+        _ = try ContextNoteWriter().save(note: "image note", for: [imageURL], in: fixture.inboxURL, now: now)
+        let notes = try QuicksaveHistory().todayNotes(in: fixture.inboxURL, now: now)
+
+        #expect(notes.map(\.text) == ["image note"])
+        #expect(notes.first?.captureName == "capture")
+        #expect(notes.first?.captureURL?.resolvingSymlinksInPath() == imageURL.resolvingSymlinksInPath())
+        #expect(notes.first?.captureKind == "image")
     }
 }
 
