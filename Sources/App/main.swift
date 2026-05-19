@@ -1,26 +1,211 @@
 import AppKit
+import Carbon
 import Core
 import SwiftUI
 
 @main
 struct MainApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
     var body: some Scene {
-        WindowGroup {
-            SurfaceEditorView()
-                .background(.clear)
-                .onAppear {
-                    DispatchQueue.main.async {
-                        NSApp.windows.first?.makeSurfaceEditorOverlay()
-                    }
-                }
+        Settings {
+            EmptyView()
         }
-        .windowStyle(.hiddenTitleBar)
+    }
+}
+
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    private let runtime = SurfaceRuntime()
+    private var panel: SurfacePanel?
+    private var hotKeys: SurfaceHotKeys?
+    private var localKeyMonitor: Any?
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.setActivationPolicy(.accessory)
+
+        let panel = SurfacePanel()
+        panel.contentView = NSHostingView(
+            rootView: SurfaceEditorView()
+                .environmentObject(runtime)
+                .background(.clear)
+        )
+        self.panel = panel
+        runtime.attach(panel: panel)
+
+        hotKeys = SurfaceHotKeys { [weak runtime] in
+            runtime?.toggleOverlay()
+        }
+        hotKeys?.install()
+
+        localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak runtime] event in
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            let characters = event.charactersIgnoringModifiers?.lowercased()
+            if flags.contains(.command), characters == "e" {
+                MainActor.assumeIsolated {
+                    runtime?.toggleOverlay()
+                }
+                return nil
+            }
+
+            guard event.keyCode == UInt16(kVK_Escape) else {
+                return event
+            }
+            MainActor.assumeIsolated {
+                runtime?.hideOverlay()
+            }
+            return nil
+        }
+
+        runtime.hideOverlay()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        if let localKeyMonitor {
+            NSEvent.removeMonitor(localKeyMonitor)
+        }
+    }
+}
+
+@MainActor
+final class SurfaceRuntime: ObservableObject {
+    @Published var isOverlayVisible = false
+    @Published var mode = SurfaceMode.use
+
+    private weak var panel: SurfacePanel?
+
+    func attach(panel: SurfacePanel) {
+        self.panel = panel
+        applyOverlayVisibility()
+    }
+
+    func toggleOverlay() {
+        isOverlayVisible ? hideOverlay() : showUseMode()
+    }
+
+    func showUseMode() {
+        isOverlayVisible = true
+        mode = .use
+        applyOverlayVisibility()
+    }
+
+    func showEditMode() {
+        isOverlayVisible = true
+        mode = .edit
+        applyOverlayVisibility()
+    }
+
+    func hideOverlay() {
+        isOverlayVisible = false
+        mode = .use
+        applyOverlayVisibility()
+    }
+
+    private func applyOverlayVisibility() {
+        guard let panel else { return }
+        if isOverlayVisible {
+            panel.prepareForSurfaceDisplay()
+            NSApp.activate(ignoringOtherApps: true)
+            panel.orderFrontRegardless()
+            panel.makeKey()
+        } else {
+            panel.orderOut(nil)
+        }
+    }
+}
+
+final class SurfacePanel: NSPanel {
+    init() {
+        let frame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1200, height: 800)
+        super.init(
+            contentRect: frame,
+            styleMask: [.borderless, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        prepareForSurfaceDisplay()
+    }
+
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
+
+    func prepareForSurfaceDisplay() {
+        let targetFrame = NSScreen.main?.visibleFrame ?? frame
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = false
+        level = .screenSaver
+        hidesOnDeactivate = false
+        isReleasedWhenClosed = false
+        isMovable = false
+        isMovableByWindowBackground = false
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        setFrame(targetFrame, display: true)
+    }
+}
+
+final class SurfaceHotKeys {
+    private var hotKeyRef: EventHotKeyRef?
+    private var handlerRef: EventHandlerRef?
+    private let onToggle: @MainActor () -> Void
+
+    init(onToggle: @escaping @MainActor () -> Void) {
+        self.onToggle = onToggle
+    }
+
+    deinit {
+        if let hotKeyRef {
+            UnregisterEventHotKey(hotKeyRef)
+        }
+        if let handlerRef {
+            RemoveEventHandler(handlerRef)
+        }
+    }
+
+    func install() {
+        var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+        let selfPointer = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
+        InstallEventHandler(
+            GetApplicationEventTarget(),
+            { _, event, userData in
+                guard let event, let userData else { return noErr }
+                var hotKeyID = EventHotKeyID()
+                GetEventParameter(
+                    event,
+                    EventParamName(kEventParamDirectObject),
+                    EventParamType(typeEventHotKeyID),
+                    nil,
+                    MemoryLayout<EventHotKeyID>.size,
+                    nil,
+                    &hotKeyID
+                )
+                guard hotKeyID.signature == OSType("SURF".fourCharCode), hotKeyID.id == 1 else {
+                    return noErr
+                }
+
+                let pointerAddress = UInt(bitPattern: userData)
+                Task { @MainActor in
+                    guard let pointer = UnsafeRawPointer(bitPattern: pointerAddress) else {
+                        return
+                    }
+                    Unmanaged<SurfaceHotKeys>.fromOpaque(pointer).takeUnretainedValue().onToggle()
+                }
+                return noErr
+            },
+            1,
+            &eventType,
+            selfPointer,
+            &handlerRef
+        )
+
+        let hotKeyID = EventHotKeyID(signature: OSType("SURF".fourCharCode), id: 1)
+        RegisterEventHotKey(UInt32(kVK_ANSI_E), UInt32(cmdKey), hotKeyID, GetApplicationEventTarget(), 0, &hotKeyRef)
     }
 }
 
 struct SurfaceEditorView: View {
+    @EnvironmentObject private var runtime: SurfaceRuntime
     @State private var workspace = DemoSurface.workspace
-    @State private var mode = SurfaceMode.edit
     @State private var dragging: [BlockID: CGSize] = [:]
     @State private var hoveredBlock: BlockID?
     @State private var menuCorner = OverlayCorner.topLeft
@@ -36,7 +221,7 @@ struct SurfaceEditorView: View {
             let menuOrigin = menuCorner.origin(in: proxy.size, size: menuSize, margin: margin)
 
             ZStack(alignment: .topLeading) {
-                if mode == .edit {
+                if runtime.mode == .edit {
                     Canvas { context, size in
                         var path = Path()
                         for column in 0...grid.columns {
@@ -54,7 +239,7 @@ struct SurfaceEditorView: View {
                     .ignoresSafeArea()
                 }
 
-                if mode == .edit {
+                if runtime.mode == .edit {
                     HStack(alignment: .top, spacing: 10) {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Surface")
@@ -73,12 +258,12 @@ struct SurfaceEditorView: View {
                             withAnimation(.smooth(duration: 0.18)) {
                                 dragging.removeAll()
                                 hoveredBlock = nil
-                                mode = .use
+                                runtime.showUseMode()
                             }
                         }
                         .buttonStyle(.bordered)
                         Button("Esc") {
-                            NSApp.terminate(nil)
+                            runtime.hideOverlay()
                         }
                         .keyboardShortcut(.escape, modifiers: [])
                         .buttonStyle(.bordered)
@@ -113,7 +298,7 @@ struct SurfaceEditorView: View {
                 } else {
                     Button("Edit") {
                         withAnimation(.smooth(duration: 0.18)) {
-                            mode = .edit
+                            runtime.showEditMode()
                         }
                     }
                     .buttonStyle(.bordered)
@@ -123,7 +308,7 @@ struct SurfaceEditorView: View {
 
                 ForEach(workspace.enabledBlocks) { block in
                     let isDragging = dragging[block.id] != nil
-                    let isActive = mode == .edit && (hoveredBlock == block.id || isDragging)
+                    let isActive = runtime.mode == .edit && (hoveredBlock == block.id || isDragging)
 
                     VStack(alignment: .leading, spacing: 6) {
                         Text(title(for: block.id))
@@ -146,7 +331,7 @@ struct SurfaceEditorView: View {
                             .stroke(.white.opacity(isActive ? 0.30 : 0.14), lineWidth: 1)
                     }
                     .overlay(alignment: .topTrailing) {
-                        if mode == .edit && isDragging {
+                        if runtime.mode == .edit && isDragging {
                             Circle()
                                 .fill(.white.opacity(0.85))
                                 .frame(width: 8, height: 8)
@@ -154,7 +339,7 @@ struct SurfaceEditorView: View {
                         }
                     }
                     .overlay(alignment: .bottomTrailing) {
-                        if mode == .edit && isDragging {
+                        if runtime.mode == .edit && isDragging {
                             Circle()
                                 .fill(.white.opacity(0.85))
                                 .frame(width: 8, height: 8)
@@ -162,7 +347,7 @@ struct SurfaceEditorView: View {
                         }
                     }
                     .overlay(alignment: .bottomLeading) {
-                        if mode == .edit && isDragging {
+                        if runtime.mode == .edit && isDragging {
                             Circle()
                                 .fill(.white.opacity(0.85))
                                 .frame(width: 8, height: 8)
@@ -180,17 +365,17 @@ struct SurfaceEditorView: View {
                     .animation(.smooth(duration: 0.12), value: dragging[block.id] ?? .zero)
                     .animation(.smooth(duration: 0.12), value: hoveredBlock)
                     .onHover { isHovering in
-                        guard mode == .edit else { return }
+                        guard runtime.mode == .edit else { return }
                         hoveredBlock = isHovering ? block.id : (hoveredBlock == block.id ? nil : hoveredBlock)
                     }
                     .gesture(
                         DragGesture()
                             .onChanged { value in
-                                guard mode == .edit else { return }
+                                guard runtime.mode == .edit else { return }
                                 dragging[block.id] = value.translation
                             }
                             .onEnded { value in
-                                guard mode == .edit else { return }
+                                guard runtime.mode == .edit else { return }
                                 let x = block.frame.origin.x + Int((value.translation.width / cellWidth).rounded())
                                 let y = block.frame.origin.y + Int((value.translation.height / cellHeight).rounded())
                                 withAnimation(.smooth(duration: 0.18)) {
@@ -206,6 +391,12 @@ struct SurfaceEditorView: View {
 
     private func title(for id: BlockID) -> String {
         workspace.definitions.first(where: { $0.id == id })?.title ?? id.rawValue
+    }
+}
+
+private extension String {
+    var fourCharCode: FourCharCode {
+        utf8.reduce(0) { ($0 << 8) + FourCharCode($1) }
     }
 }
 
@@ -244,26 +435,6 @@ enum OverlayCorner {
         case (true, true):
             .bottomRight
         }
-    }
-}
-
-extension NSWindow {
-    func makeSurfaceEditorOverlay() {
-        guard let targetScreen = screen ?? NSScreen.main else {
-            return
-        }
-        isOpaque = false
-        backgroundColor = .clear
-        hasShadow = false
-        level = .screenSaver
-        isMovable = false
-        isMovableByWindowBackground = false
-        standardWindowButton(.closeButton)?.isHidden = true
-        standardWindowButton(.miniaturizeButton)?.isHidden = true
-        standardWindowButton(.zoomButton)?.isHidden = true
-        styleMask = [.borderless, .fullSizeContentView]
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
-        setFrame(targetScreen.visibleFrame, display: true)
     }
 }
 

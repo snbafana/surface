@@ -22,6 +22,7 @@ let package = Package(
             path: "Sources/App",
             linkerSettings: [
                 .linkedFramework("AppKit"),
+                .linkedFramework("Carbon"),
                 .linkedFramework("SwiftUI")
             ]
         ),
