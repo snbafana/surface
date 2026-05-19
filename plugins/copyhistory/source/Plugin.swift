@@ -6,18 +6,14 @@ public enum Plugin {
         id: "copyhistory",
         title: "Copy History",
         defaultSize: GridSize(width: 8, height: 8)
-    ) { context in
-        Runtime(context: context)
+    ) { _ in
+        Runtime()
     }
 }
 
 @MainActor
 final class Runtime: BlockRuntime {
     private var isRunning = false
-
-    init(context: Block.Context) {
-        _ = context
-    }
 
     func start() {
         isRunning = true

@@ -1,5 +1,5 @@
 import Core
-import SurfaceUI
+import UI
 import SwiftUI
 
 struct SurfaceView: View {
@@ -91,10 +91,10 @@ struct SurfaceView: View {
             }
             .padding(12)
             .frame(width: menuSize.width, height: menuSize.height, alignment: .topLeading)
-            .background(SurfaceStyle.panelBackground, in: RoundedRectangle(cornerRadius: 10))
+            .background(Style.panelBackground, in: RoundedRectangle(cornerRadius: 10))
             .overlay {
                 RoundedRectangle(cornerRadius: 10)
-                    .stroke(SurfaceStyle.border, lineWidth: 1)
+                    .stroke(Style.border, lineWidth: 1)
             }
         } else {
             Button("Edit") {

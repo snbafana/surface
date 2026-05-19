@@ -9,7 +9,7 @@ let package = Package(
     ],
     products: [
         .library(name: "Core", targets: ["Core"]),
-        .library(name: "SurfaceUI", targets: ["SurfaceUI"]),
+        .library(name: "UI", targets: ["UI"]),
         .executable(name: "block-preview", targets: ["BlockPreview"]),
         .executable(name: "App", targets: ["App"])
     ],
@@ -19,13 +19,13 @@ let package = Package(
             path: "Sources/Core"
         ),
         .target(
-            name: "SurfaceUI",
+            name: "UI",
             dependencies: ["Core"],
-            path: "Sources/SurfaceUI"
+            path: "Sources/UI"
         ),
         .executableTarget(
             name: "App",
-            dependencies: ["Blocks", "Core", "SurfaceUI"],
+            dependencies: ["Blocks", "Core", "UI"],
             path: "Sources/App",
             linkerSettings: [
                 .linkedFramework("AppKit"),
@@ -42,7 +42,7 @@ let package = Package(
         ),
         .target(
             name: "BlockPreviewSupport",
-            dependencies: ["Blocks", "Core", "SurfaceUI"],
+            dependencies: ["Blocks", "Core", "UI"],
             path: "tools/block-preview/support",
             linkerSettings: [
                 .linkedFramework("AppKit"),

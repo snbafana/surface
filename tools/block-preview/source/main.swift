@@ -3,19 +3,8 @@ import Core
 import Foundation
 
 enum BlockPreviewCommand {
-    static func runMain() async throws {
-        do {
-            try await MainActor.run {
-                try run()
-            }
-        } catch {
-            FileHandle.standardError.write(Data("\(error)\n".utf8))
-            Foundation.exit(1)
-        }
-    }
-
     @MainActor
-    private static func run() throws {
+    static func run() throws {
         var arguments = Array(CommandLine.arguments.dropFirst())
         guard let command = arguments.first else {
             printUsage()
@@ -88,7 +77,9 @@ enum BlockPreviewCommand {
 }
 
 do {
-    try await BlockPreviewCommand.runMain()
+    try await MainActor.run {
+        try BlockPreviewCommand.run()
+    }
 } catch {
     FileHandle.standardError.write(Data("\(error)\n".utf8))
     Foundation.exit(1)

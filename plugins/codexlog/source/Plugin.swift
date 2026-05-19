@@ -6,18 +6,14 @@ public enum Plugin {
         id: "codexlog",
         title: "Codex Log",
         defaultSize: GridSize(width: 10, height: 8)
-    ) { context in
-        Runtime(context: context)
+    ) { _ in
+        Runtime()
     }
 }
 
 @MainActor
 final class Runtime: BlockRuntime {
     private var isRunning = false
-
-    init(context: Block.Context) {
-        _ = context
-    }
 
     func start() {
         isRunning = true

@@ -2,8 +2,8 @@ import AppKit
 import Blocks
 import Core
 import Foundation
-import SurfaceUI
 import SwiftUI
+import UI
 
 public struct BlockPreviewCase: Hashable, Sendable {
     public var blockID: BlockID
@@ -78,7 +78,7 @@ public enum BlockPreview {
             runtime.makeView()
         }
         .frame(width: size.width, height: size.height)
-        .background(SurfaceStyle.previewBackground)
+        .background(Style.previewBackground)
 
         let data = try BlockImageRenderer.pngData(for: AnyView(view), size: size)
         try data.write(to: url, options: [.atomic])

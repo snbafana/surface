@@ -126,8 +126,6 @@ final class KeyboardShortcuts: KeyboardShortcutRegistrar {
     private var hotKeyRefs: [KeyboardShortcutToken: EventHotKeyRef] = [:]
     private var actions: [KeyboardShortcutToken: @MainActor @Sendable () -> Void] = [:]
 
-    init() {}
-
     @MainActor
     @discardableResult
     func registerKeyboardShortcut(
