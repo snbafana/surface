@@ -38,7 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.statusIcon = statusIcon
 
         toggleShortcut = surface.keyboardShortcuts.registerKeyboardShortcut(
-            KeyboardShortcut(keyCode: UInt32(kVK_ANSI_E), modifiers: UInt32(cmdKey))
+            KeyboardShortcut(keyCode: UInt32(kVK_ANSI_E), modifiers: UInt32(optionKey))
         ) { [weak surface] in
             surface?.toggle()
         }
@@ -46,7 +46,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak surface] event in
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             let characters = event.charactersIgnoringModifiers?.lowercased()
-            if flags.contains(.command), characters == "e" {
+            if flags.contains(.option), characters == "e" {
                 MainActor.assumeIsolated {
                     surface?.toggle()
                 }
