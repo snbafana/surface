@@ -19,10 +19,28 @@ public struct Block: Identifiable, Sendable {
         public var storageDirectory: URL?
         public var now: Date?
 
+        public init() {
+            self.keyboardShortcuts = nil
+            self.storageDirectory = nil
+            self.now = nil
+        }
+
+        public init(keyboardShortcuts: (any KeyboardShortcutRegistrar)?) {
+            self.keyboardShortcuts = keyboardShortcuts
+            self.storageDirectory = nil
+            self.now = nil
+        }
+
+        public init(storageDirectory: URL?, now: Date?) {
+            self.keyboardShortcuts = nil
+            self.storageDirectory = storageDirectory
+            self.now = now
+        }
+
         public init(
-            keyboardShortcuts: (any KeyboardShortcutRegistrar)? = nil,
-            storageDirectory: URL? = nil,
-            now: Date? = nil
+            keyboardShortcuts: (any KeyboardShortcutRegistrar)?,
+            storageDirectory: URL?,
+            now: Date?
         ) {
             self.keyboardShortcuts = keyboardShortcuts
             self.storageDirectory = storageDirectory
