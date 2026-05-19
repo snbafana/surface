@@ -29,11 +29,14 @@ The layout model uses a simple integer grid:
 
 This is intentionally enough for the first visual editor and no more.
 
-## v0c: Plugin Boundary
+## v0c: Block Registry
 
-Plugins are not implemented in v0. The only plugin-facing model is a descriptor:
+Surface does not have a separate plugin/provider layer. A block type is the unit of extension.
 
-- `ProviderDescriptor`: names a future provider and the block ids it owns.
-- `Catalog`: a list of descriptors and block definitions.
+The app registry maps block ids to executable block implementations:
 
-This keeps the host editable before hook execution exists.
+- `BlockDefinition`: catalog/layout metadata for a block type.
+- `BlockType`: app-side rendering, action, cached-state, and refresh hooks for a block type.
+- `BlockRegistry`: the active directory of available block types.
+
+The workspace and layout only store block ids, enabled state, and frames. The registry supplies the UI and runtime behavior for each known block id.

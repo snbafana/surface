@@ -5,18 +5,16 @@ Surface is a local, editable Raycast-style overlay for macOS.
 The first version is model-first:
 
 ```text
-Sources/Core      block, layout, persistence, and future provider descriptors
-Sources/App       a minimal preview shell
-Sources/Plugins   reserved for built-in providers after block/layout validation
-plugins/             reserved for external manifests and scripts
-docs/                architecture notes
-tests/               model tests
+Sources/Core   block, layout, and persistence models
+Sources/App    AppKit overlay shell, editor UI, and block registry
+docs/          architecture notes
+tests/         model tests
 ```
 
 v0 order:
 
 1. Blocks.
 2. Layout.
-3. Plugin boundary.
+3. Block registry.
 
-Plugins are intentionally not implemented until blocks and layout are working.
+Surface does not have a separate plugin/provider layer. A block type is the unit of extension.

@@ -203,6 +203,92 @@ final class SurfaceHotKeys {
     }
 }
 
+struct BlockState: Sendable {
+    var data: Data
+
+    static let empty = BlockState(data: Data())
+}
+
+struct BlockAction: Sendable {
+    var name: String
+    var payload: [String: String] = [:]
+}
+
+@MainActor
+struct BlockRenderContext {
+    var state: BlockState
+    var perform: (BlockAction) -> Void
+}
+
+@MainActor
+struct BlockType {
+    var definition: BlockDefinition
+    var loadCachedState: @Sendable () async throws -> BlockState
+    var refresh: @Sendable () async throws -> BlockState
+    var perform: @Sendable (BlockAction) async throws -> BlockState
+    var makeView: @MainActor (BlockRenderContext) -> AnyView
+
+    init(
+        id: BlockID,
+        title: String,
+        defaultSize: GridSize,
+        loadCachedState: @escaping @Sendable () async throws -> BlockState = { .empty },
+        refresh: @escaping @Sendable () async throws -> BlockState = { .empty },
+        perform: @escaping @Sendable (BlockAction) async throws -> BlockState = { _ in .empty },
+        makeView: @escaping @MainActor (BlockRenderContext) -> AnyView
+    ) {
+        self.definition = BlockDefinition(id: id, title: title, defaultSize: defaultSize)
+        self.loadCachedState = loadCachedState
+        self.refresh = refresh
+        self.perform = perform
+        self.makeView = makeView
+    }
+}
+
+@MainActor
+struct BlockRegistry {
+    private var blockTypes: [BlockType]
+
+    init(_ blockTypes: [BlockType]) {
+        self.blockTypes = blockTypes
+    }
+
+    var definitions: [BlockDefinition] {
+        blockTypes.map(\.definition)
+    }
+
+    func blockType(for id: BlockID) -> BlockType? {
+        blockTypes.first { $0.definition.id == id }
+    }
+}
+
+@MainActor
+enum BuiltinBlocks {
+    static let registry = BlockRegistry([
+        BlockType(
+            id: "command",
+            title: "Command",
+            defaultSize: GridSize(width: 16, height: 4)
+        ) { _ in
+            AnyView(PlaceholderBlockView(text: "Command"))
+        },
+        BlockType(
+            id: "captures",
+            title: "Captures",
+            defaultSize: GridSize(width: 8, height: 8)
+        ) { _ in
+            AnyView(PlaceholderBlockView(text: "Recent captures"))
+        },
+        BlockType(
+            id: "status",
+            title: "Status",
+            defaultSize: GridSize(width: 8, height: 4)
+        ) { _ in
+            AnyView(PlaceholderBlockView(text: "Surface ready"))
+        }
+    ])
+}
+
 struct SurfaceEditorView: View {
     @EnvironmentObject private var runtime: SurfaceRuntime
     @State private var workspace = DemoSurface.workspace
@@ -210,6 +296,7 @@ struct SurfaceEditorView: View {
     @State private var hoveredBlock: BlockID?
     @State private var menuCorner = OverlayCorner.topLeft
     @State private var menuDrag = CGSize.zero
+    private let registry = BuiltinBlocks.registry
 
     var body: some View {
         GeometryReader { proxy in
@@ -318,6 +405,7 @@ struct SurfaceEditorView: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
+                        blockView(for: block.id)
                     }
                     .padding(12)
                     .frame(
@@ -390,7 +478,31 @@ struct SurfaceEditorView: View {
     }
 
     private func title(for id: BlockID) -> String {
-        workspace.definitions.first(where: { $0.id == id })?.title ?? id.rawValue
+        registry.blockType(for: id)?.definition.title ?? id.rawValue
+    }
+
+    @MainActor
+    private func blockView(for id: BlockID) -> AnyView {
+        guard let blockType = registry.blockType(for: id) else {
+            return AnyView(PlaceholderBlockView(text: "Missing block type"))
+        }
+        return blockType.makeView(
+            BlockRenderContext(
+                state: .empty,
+                perform: { _ in }
+            )
+        )
+    }
+}
+
+struct PlaceholderBlockView: View {
+    var text: String
+
+    var body: some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
 
@@ -438,18 +550,14 @@ enum OverlayCorner {
     }
 }
 
+@MainActor
 enum DemoSurface {
     static let workspace: Workspace = {
-        let definitions = [
-            BlockDefinition(id: "command", title: "Command", defaultSize: GridSize(width: 16, height: 4)),
-            BlockDefinition(id: "captures", title: "Captures", defaultSize: GridSize(width: 8, height: 8)),
-            BlockDefinition(id: "status", title: "Status", defaultSize: GridSize(width: 8, height: 4))
-        ]
         let layout = Layout(grid: Grid(columns: 24, rows: 16), blocks: [
             BlockInstance(id: "command", frame: GridFrame(x: 4, y: 1, width: 16, height: 4)),
             BlockInstance(id: "captures", frame: GridFrame(x: 1, y: 6, width: 8, height: 8)),
             BlockInstance(id: "status", frame: GridFrame(x: 15, y: 6, width: 8, height: 4))
         ])
-        return try! Workspace(definitions: definitions, layout: layout)
+        return try! Workspace(definitions: BuiltinBlocks.registry.definitions, layout: layout)
     }()
 }

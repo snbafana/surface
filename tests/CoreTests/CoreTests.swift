@@ -270,13 +270,4 @@ struct CoreTests {
         #expect(decoded.layout.blocks[0].frame == GridFrame(x: 3, y: 2, width: 4, height: 3))
     }
 
-    @Test func pluginBoundaryIsOnlyADescriptorInV0c() {
-        let catalog = Catalog(
-            providers: [ProviderDescriptor(id: "quicksave", title: "Quicksave", blockIDs: ["captures"])],
-            blocks: [BlockDefinition(id: "captures", title: "Captures")]
-        )
-
-        #expect(catalog.providers[0].blockIDs == ["captures"])
-        #expect(catalog.blocks[0].id == "captures")
-    }
 }
