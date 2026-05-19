@@ -1,6 +1,7 @@
 import AppKit
 import Blocks
 import Core
+import SurfaceUI
 import SwiftUI
 
 @MainActor

@@ -1,4 +1,5 @@
 import Core
+import SurfaceUI
 import SwiftUI
 
 struct SurfaceView: View {
@@ -90,10 +91,10 @@ struct SurfaceView: View {
             }
             .padding(12)
             .frame(width: menuSize.width, height: menuSize.height, alignment: .topLeading)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
+            .background(SurfaceStyle.panelBackground, in: RoundedRectangle(cornerRadius: 10))
             .overlay {
                 RoundedRectangle(cornerRadius: 10)
-                    .stroke(.white.opacity(0.18), lineWidth: 1)
+                    .stroke(SurfaceStyle.border, lineWidth: 1)
             }
         } else {
             Button("Edit") {
@@ -127,27 +128,18 @@ struct SurfaceView: View {
         let isDragging = dragging[block.id] != nil
         let isActive = surface.mode == .edit && (hoveredBlock == block.id || isDragging)
 
-        return VStack(alignment: .leading, spacing: 6) {
-            Text(title(for: block.id))
-                .font(.headline)
-            if isActive {
-                Text("\(block.frame.origin.x), \(block.frame.origin.y) / \(block.frame.size.width)x\(block.frame.size.height)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+        return BlockChrome(
+            title: title(for: block.id),
+            subtitle: isActive ? "\(block.frame.origin.x), \(block.frame.origin.y) / \(block.frame.size.width)x\(block.frame.size.height)" : nil,
+            isActive: isActive
+        ) {
             surface.runningBlocks.view(for: block.id)
         }
-        .padding(12)
         .frame(
             width: CGFloat(block.frame.size.width) * cellWidth - 8,
             height: CGFloat(block.frame.size.height) * cellHeight - 8,
             alignment: .topLeading
         )
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(.white.opacity(isActive ? 0.30 : 0.14), lineWidth: 1)
-        }
         .overlay(alignment: .topTrailing) {
             dragHandle(isVisible: surface.mode == .edit && isDragging)
         }
@@ -211,17 +203,6 @@ struct SurfaceView: View {
 
     private func title(for id: BlockID) -> String {
         surface.blocks.block(for: id)?.title ?? id.rawValue
-    }
-}
-
-struct PlaceholderBlockView: View {
-    var text: String
-
-    var body: some View {
-        Text(text)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
 

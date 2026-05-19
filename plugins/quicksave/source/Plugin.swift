@@ -63,7 +63,7 @@ final class Runtime: ObservableObject, BlockRuntime {
 
     func captureClipboard() {
         do {
-            let result = try capture.captureClipboard(to: QuicksaveSettings.inboxURL())
+            let result = try capture.captureClipboard(to: inboxURL)
             lastCaptureURLs = result.savedURLs
             status = statusText(for: result)
             reloadNotes()
@@ -75,7 +75,7 @@ final class Runtime: ObservableObject, BlockRuntime {
     func saveNote() {
         let targets = latestCaptureTargets()
         do {
-            _ = try noteWriter.save(note: noteText, for: targets, in: QuicksaveSettings.inboxURL())
+            _ = try noteWriter.save(note: noteText, for: targets, in: inboxURL)
             noteText = ""
             status = targets.isEmpty ? "Saved note" : "Saved note for \(targets[0].lastPathComponent)"
             reloadNotes()
@@ -85,14 +85,14 @@ final class Runtime: ObservableObject, BlockRuntime {
     }
 
     func openInbox() {
-        let inbox = QuicksaveSettings.inboxURL()
+        let inbox = inboxURL
         try? FileManager.default.createDirectory(at: inbox, withIntermediateDirectories: true)
         NSWorkspace.shared.open(inbox)
     }
 
     private func reloadNotes() {
         do {
-            notes = try history.todayNotes(in: QuicksaveSettings.inboxURL())
+            notes = try history.todayNotes(in: inboxURL, now: context.now ?? Date())
         } catch {
             status = error.localizedDescription
         }
@@ -109,7 +109,7 @@ final class Runtime: ObservableObject, BlockRuntime {
     }
 
     private func latestCaptureURL() -> URL? {
-        let inbox = QuicksaveSettings.inboxURL()
+        let inbox = inboxURL
         guard FileManager.default.fileExists(atPath: inbox.path) else {
             return nil
         }
@@ -126,6 +126,10 @@ final class Runtime: ObservableObject, BlockRuntime {
 
     private func modificationDate(_ url: URL) -> Date {
         (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+    }
+
+    private var inboxURL: URL {
+        context.storageDirectory ?? QuicksaveSettings.inboxURL()
     }
 
     private func statusText(for result: CaptureResult) -> String {

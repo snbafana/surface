@@ -9,6 +9,8 @@ let package = Package(
     ],
     products: [
         .library(name: "Core", targets: ["Core"]),
+        .library(name: "SurfaceUI", targets: ["SurfaceUI"]),
+        .executable(name: "block-preview", targets: ["BlockPreview"]),
         .executable(name: "App", targets: ["App"])
     ],
     targets: [
@@ -16,9 +18,14 @@ let package = Package(
             name: "Core",
             path: "Sources/Core"
         ),
+        .target(
+            name: "SurfaceUI",
+            dependencies: ["Core"],
+            path: "Sources/SurfaceUI"
+        ),
         .executableTarget(
             name: "App",
-            dependencies: ["Blocks", "Core"],
+            dependencies: ["Blocks", "Core", "SurfaceUI"],
             path: "Sources/App",
             linkerSettings: [
                 .linkedFramework("AppKit"),
@@ -32,6 +39,20 @@ let package = Package(
             path: "plugins",
             exclude: ["codexlog", "copyhistory", "quicksave"],
             sources: ["Blocks.swift"]
+        ),
+        .target(
+            name: "BlockPreviewSupport",
+            dependencies: ["Blocks", "Core", "SurfaceUI"],
+            path: "tools/block-preview/support",
+            linkerSettings: [
+                .linkedFramework("AppKit"),
+                .linkedFramework("SwiftUI")
+            ]
+        ),
+        .executableTarget(
+            name: "BlockPreview",
+            dependencies: ["BlockPreviewSupport"],
+            path: "tools/block-preview/source"
         ),
         .target(
             name: "Quicksave",
@@ -71,6 +92,11 @@ let package = Package(
             name: "CodexLogTests",
             dependencies: ["CodexLog"],
             path: "plugins/codexlog/tests"
+        ),
+        .testTarget(
+            name: "BlockPreviewTests",
+            dependencies: ["BlockPreviewSupport"],
+            path: "tests/BlockPreviewTests"
         )
     ]
 )

@@ -16,9 +16,17 @@ public struct BlockID: Hashable, Codable, RawRepresentable, Sendable, Expressibl
 public struct Block: Identifiable, Sendable {
     public struct Context: @unchecked Sendable {
         public weak var keyboardShortcuts: (any KeyboardShortcutRegistrar)?
+        public var storageDirectory: URL?
+        public var now: Date?
 
-        public init(keyboardShortcuts: (any KeyboardShortcutRegistrar)? = nil) {
+        public init(
+            keyboardShortcuts: (any KeyboardShortcutRegistrar)? = nil,
+            storageDirectory: URL? = nil,
+            now: Date? = nil
+        ) {
             self.keyboardShortcuts = keyboardShortcuts
+            self.storageDirectory = storageDirectory
+            self.now = now
         }
     }
 
