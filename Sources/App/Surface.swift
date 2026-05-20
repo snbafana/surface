@@ -132,8 +132,8 @@ enum SurfaceMode {
 enum DemoSurface {
     static func workspace(blocks: BlockRegistry = Blocks.registry) -> Workspace {
         let layout = Layout(grid: Grid(columns: 24, rows: 16), blocks: [
-            Block.Instance(id: "quicksave", frame: GridFrame(x: 1, y: 1, width: 8, height: 8)),
-            Block.Instance(id: "copyhistory", frame: GridFrame(x: 10, y: 1, width: 8, height: 8)),
+            Block.Instance(id: "quicksave", frame: GridFrame(x: 1, y: 1, width: 10, height: 5)),
+            Block.Instance(id: "copyhistory", frame: GridFrame(x: 12, y: 1, width: 8, height: 8)),
             Block.Instance(id: "codexlog", frame: GridFrame(x: 5, y: 10, width: 10, height: 5))
         ])
         return try! Workspace(blocks: blocks.blocks, layout: layout)

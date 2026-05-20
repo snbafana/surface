@@ -68,7 +68,7 @@ enum BlockPreviewCommand {
               swift run block-preview <block-id> [--fixture name] [--size 420x520] [--output dir]
 
             Examples:
-              swift run block-preview quicksave --fixture notes-and-captures --size 420x520
+              swift run block-preview quicksave --fixture notes-and-captures --size 640x360
               swift run block-preview copyhistory --fixture mixed-clipboard
               swift run block-preview codexlog --fixture active-thread
             """

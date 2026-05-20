@@ -42,8 +42,8 @@ public struct BlockPreviewMetrics: Sendable {
 public enum BlockPreview {
     public static let defaultOutputDirectory = URL(fileURLWithPath: ".build/block-previews", isDirectory: true)
     public static let cases: [BlockPreviewCase] = [
-        BlockPreviewCase(blockID: "quicksave", fixture: "empty", size: CGSize(width: 420, height: 520)),
-        BlockPreviewCase(blockID: "quicksave", fixture: "notes-and-captures", size: CGSize(width: 420, height: 520)),
+        BlockPreviewCase(blockID: "quicksave", fixture: "empty", size: CGSize(width: 640, height: 360)),
+        BlockPreviewCase(blockID: "quicksave", fixture: "notes-and-captures", size: CGSize(width: 640, height: 360)),
         BlockPreviewCase(blockID: "copyhistory", fixture: "empty", size: CGSize(width: 420, height: 420)),
         BlockPreviewCase(blockID: "copyhistory", fixture: "mixed-clipboard", size: CGSize(width: 420, height: 420)),
         BlockPreviewCase(blockID: "codexlog", fixture: "empty", size: CGSize(width: 520, height: 360)),

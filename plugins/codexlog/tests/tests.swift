@@ -1,6 +1,7 @@
-import CodexLog
 import Core
+import Foundation
 import Testing
+@testable import CodexLog
 
 @Suite("Codex Log plugin")
 struct CodexLogTests {
@@ -9,8 +10,183 @@ struct CodexLogTests {
         #expect(Plugin.block.id == "codexlog")
 
         let runtime = Plugin.block.makeRuntime(Block.Context())
-        runtime.start()
         _ = runtime.makeView()
         runtime.stop()
+    }
+
+    @Test func readsThreadsAutomationsActionsAndProcessesFromCodexHome() throws {
+        let fixture = try CodexLogFixture()
+        try fixture.writeSessionIndex([
+            #"{"id":"thread-old","thread_name":"Older thread","updated_at":"1779228000000"}"#,
+            #"{"id":"thread-new","thread_name":"Newer thread","updated_at":"1779229000000"}"#
+        ])
+        try fixture.writeEmptyLogsDatabase()
+        try fixture.writeAutomation(
+            id: "daily-review",
+            text: """
+            version = 1
+            id = "daily-review"
+            kind = "cron"
+            name = "Daily Review"
+            status = "ACTIVE"
+            rrule = "FREQ=DAILY"
+            updated_at = 1779229000000
+            """
+        )
+        try fixture.writeActions([
+            #"{"id":"act-1","title":"Approve generated patch","detail":"Apply the proposed diff","status":"pending","thread_id":"thread-new","automation_id":"daily-review","created_at":1779229100000}"#,
+            #"{"id":"act-2","title":"Already handled","status":"approved","created_at":"1779220000000"}"#
+        ])
+
+        let reader = CodexStateReader(codexHome: fixture.rootURL) { command in
+            if command.first == "/bin/ps" {
+                return """
+                /Applications/Codex.app/Contents/MacOS/Codex
+                /Applications/Codex.app/Contents/Resources/codex app-server --listen stdio://
+                ./Codex Computer Use.app/Contents/SharedSupport/SkyComputerUseClient.app/Contents/MacOS/SkyComputerUseClient mcp
+                """
+            }
+            if command.first == "/usr/bin/sqlite3", command.last?.contains("from logs") == true {
+                return """
+                thread-new\t12\t1779229300
+                thread-missing\t3\t1779229200
+                """
+            }
+            return ""
+        }
+
+        let snapshot = reader.snapshot(threadLimit: 4)
+
+        #expect(snapshot.threads.map(\.id) == ["thread-new", "thread-old"])
+        #expect(snapshot.activeAutomations.map(\.id) == ["daily-review"])
+        #expect(snapshot.runningThreads.map(\.id) == ["thread-new", "thread-missing"])
+        #expect(snapshot.runningThreads.first?.thread.title == "Newer thread")
+        #expect(snapshot.runningThreads.first?.logCount == 12)
+        #expect(snapshot.pendingActions.map(\.id) == ["act-1"])
+        #expect(snapshot.pendingActions.first?.detail == "Apply the proposed diff")
+        #expect(snapshot.pendingActions.first?.automationID == "daily-review")
+        #expect(snapshot.threadsNeedingAttention.map(\.id) == ["thread-new"])
+        #expect(snapshot.processes.contains(CodexProcessSummary(kind: "desktop app", count: 1)))
+        #expect(snapshot.processes.contains(CodexProcessSummary(kind: "worker server", count: 1)))
+        #expect(snapshot.processes.contains(CodexProcessSummary(kind: "computer use", count: 1)))
+    }
+
+    @Test func readsSQLiteThreadAndJobSummariesWhenDatabaseExists() throws {
+        let fixture = try CodexLogFixture()
+        try Data().write(to: fixture.rootURL.appendingPathComponent("state_5.sqlite"))
+        try fixture.writeEmptyLogsDatabase()
+
+        let reader = CodexStateReader(codexHome: fixture.rootURL) { command in
+            guard command.first == "/usr/bin/sqlite3" else {
+                return ""
+            }
+            let query = command.last ?? ""
+            if query.contains("from threads") {
+                return """
+                thread-a\tActive work\t1779229000000\t0\t/Users/example/project
+                thread-b\tArchived work\t1779228000000\t1\t/Users/example/old
+                """
+            }
+            if query.contains("from logs") {
+                return "thread-a\t42\t1779229300"
+            }
+            if query.contains("from jobs") {
+                return """
+                memory_stage1\tdone\t4
+                memory_stage1\terror\t2
+                """
+            }
+            return ""
+        }
+
+        let snapshot = reader.snapshot(threadLimit: 2)
+
+        #expect(snapshot.threads.map(\.id) == ["thread-a", "thread-b"])
+        #expect(snapshot.activeThreads.map(\.id) == ["thread-a"])
+        #expect(snapshot.runningThreads.map(\.id) == ["thread-a"])
+        #expect(snapshot.runningThreads.first?.thread.title == "Active work")
+        #expect(snapshot.runningThreads.first?.logCount == 42)
+        #expect(snapshot.jobs.contains(CodexJobSummary(kind: "memory_stage1", status: "done", count: 4)))
+        #expect(snapshot.failedJobs == [CodexJobSummary(kind: "memory_stage1", status: "error", count: 2)])
+    }
+
+    @Test func actionLogFoldsDecisionsAndKeepsHistory() throws {
+        let fixture = try CodexLogFixture()
+        try fixture.writeActions([
+            #"{"id":"patch-1","title":"Review patch","status":"pending","thread_id":"thread-a","created_at":1779229000000}"#
+        ])
+
+        let reader = CodexStateReader(codexHome: fixture.rootURL) { _ in "" }
+
+        #expect(reader.snapshot().pendingActions.map(\.id) == ["patch-1"])
+
+        try reader.approveAction("patch-1")
+        var snapshot = reader.snapshot()
+
+        #expect(snapshot.pendingActions.isEmpty)
+        #expect(snapshot.resolvedActions.map(\.status) == [.approved])
+
+        try fixture.appendAction(#"{"id":"patch-1","status":"completed","updated_at":1779229300000}"#)
+        snapshot = reader.snapshot()
+
+        #expect(snapshot.resolvedActions.map(\.status) == [.completed])
+
+        try reader.cancelAction("patch-1")
+        snapshot = reader.snapshot()
+
+        #expect(snapshot.resolvedActions.map(\.status) == [.cancelled])
+        #expect(try String(contentsOf: fixture.actionLogURL, encoding: .utf8).split(separator: "\n").count == 4)
+    }
+}
+
+private struct CodexLogFixture {
+    let rootURL: URL
+    var actionLogURL: URL {
+        rootURL.appendingPathComponent("codexlog-actions.jsonl")
+    }
+
+    init() throws {
+        rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("surface-codexlog-tests", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+    }
+
+    func writeSessionIndex(_ lines: [String]) throws {
+        try lines.joined(separator: "\n").write(
+            to: rootURL.appendingPathComponent("session_index.jsonl"),
+            atomically: true,
+            encoding: .utf8
+        )
+    }
+
+    func writeAutomation(id: String, text: String) throws {
+        let directory = rootURL
+            .appendingPathComponent("automations", isDirectory: true)
+            .appendingPathComponent(id, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try text.write(to: directory.appendingPathComponent("automation.toml"), atomically: true, encoding: .utf8)
+    }
+
+    func writeActions(_ lines: [String]) throws {
+        try lines.joined(separator: "\n").write(
+            to: actionLogURL,
+            atomically: true,
+            encoding: .utf8
+        )
+    }
+
+    func appendAction(_ line: String) throws {
+        var text = try String(contentsOf: actionLogURL, encoding: .utf8)
+        if !text.hasSuffix("\n") {
+            text.append("\n")
+        }
+        text.append(line)
+        text.append("\n")
+        try text.write(to: actionLogURL, atomically: true, encoding: .utf8)
+    }
+
+    func writeEmptyLogsDatabase() throws {
+        try Data().write(to: rootURL.appendingPathComponent("logs_2.sqlite"))
     }
 }

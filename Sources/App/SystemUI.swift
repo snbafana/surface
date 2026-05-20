@@ -73,9 +73,13 @@ final class StatusIcon: NSObject, NSMenuDelegate {
         menu.addItem(title)
         menu.addItem(.separator())
 
-        menu.addItem(actionItem(title: "Show", action: #selector(showSurface), keyEquivalent: ""))
-        menu.addItem(actionItem(title: "Edit Blocks", action: #selector(editSurface), keyEquivalent: ""))
-        menu.addItem(actionItem(title: "Hide", action: #selector(hideSurface), keyEquivalent: ""))
+        for item in [
+            actionItem(title: "Show", action: #selector(showSurface)),
+            actionItem(title: "Edit Blocks", action: #selector(editSurface)),
+            actionItem(title: "Hide", action: #selector(hideSurface))
+        ] {
+            menu.addItem(item)
+        }
 
         menu.addItem(.separator())
         let blocksTitle = NSMenuItem(title: "Active Blocks", action: nil, keyEquivalent: "")
@@ -90,10 +94,10 @@ final class StatusIcon: NSObject, NSMenuDelegate {
         }
 
         menu.addItem(.separator())
-        menu.addItem(actionItem(title: "Quit", action: #selector(quit), keyEquivalent: ""))
+        menu.addItem(actionItem(title: "Quit", action: #selector(quit)))
     }
 
-    private func actionItem(title: String, action: Selector, keyEquivalent: String) -> NSMenuItem {
+    private func actionItem(title: String, action: Selector, keyEquivalent: String = "") -> NSMenuItem {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: keyEquivalent)
         item.target = self
         return item
