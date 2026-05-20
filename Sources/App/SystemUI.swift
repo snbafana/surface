@@ -27,7 +27,7 @@ final class SurfacePanel: NSPanel {
         isReleasedWhenClosed = false
         isMovable = false
         isMovableByWindowBackground = false
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .moveToActiveSpace]
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         setFrame(targetFrame, display: true)
     }
 

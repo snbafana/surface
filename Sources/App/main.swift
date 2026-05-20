@@ -44,15 +44,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak surface] event in
-            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            let characters = event.charactersIgnoringModifiers?.lowercased()
-            if flags.contains(.option), characters == "e" {
-                MainActor.assumeIsolated {
-                    surface?.toggle()
-                }
-                return nil
-            }
-
             guard event.keyCode == UInt16(kVK_Escape) else {
                 return event
             }
