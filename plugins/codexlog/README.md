@@ -6,9 +6,12 @@ Codex Log is a Surface block for watching local Codex activity. It is not a Code
 
 - `~/.codex/state_5.sqlite`
   - recent thread metadata from `threads`
+  - rollout file paths used to connect thread rows back to session JSONL
   - job status counts from `jobs`
+- `~/.codex/sessions/**/*.jsonl`
+  - session file modification times and completion markers for active-thread detection
 - `~/.codex/logs_2.sqlite`
-  - currently running threads, inferred from recent `logs.thread_id` activity
+  - recent per-thread event counts when the log row maps to a known thread
 - `~/.codex/automations/*/automation.toml`
   - automation id, name, kind, status, schedule, and target thread
 - `ps ax`
@@ -143,7 +146,7 @@ The old PM companion automations are intentionally removed; there should be only
 The block renders:
 
 - `Action Queue`: one focused pending action at a time, including source automation, target file, thread, proposed time, and the exact point/link/idea under review.
-- `Running Threads`: threads with recent `logs_2.sqlite.logs.thread_id` activity.
+- `Running Threads`: known non-archived Codex threads with recent `state_5.sqlite` / session-file activity, excluding sessions whose latest tail includes `task_complete`. `logs_2.sqlite` is supporting metadata only because it can contain log-only conversation ids that do not map to real local session files.
 
 Interaction:
 

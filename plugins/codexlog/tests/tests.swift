@@ -16,9 +16,10 @@ struct CodexLogTests {
 
     @Test func readsThreadsAutomationsActionsAndProcessesFromCodexHome() throws {
         let fixture = try CodexLogFixture()
+        let nowMilliseconds = Int(Date().timeIntervalSince1970 * 1_000)
         try fixture.writeSessionIndex([
-            #"{"id":"thread-old","thread_name":"Older thread","updated_at":"1779228000000"}"#,
-            #"{"id":"thread-new","thread_name":"Newer thread","updated_at":"1779229000000"}"#
+            #"{"id":"thread-old","thread_name":"Older thread","updated_at":"\#(nowMilliseconds - 20_000)"}"#,
+            #"{"id":"thread-new","thread_name":"Newer thread","updated_at":"\#(nowMilliseconds)"}"#
         ])
         try fixture.writeEmptyLogsDatabase()
         try fixture.writeAutomation(
@@ -59,7 +60,7 @@ struct CodexLogTests {
 
         #expect(snapshot.threads.map(\.id) == ["thread-new", "thread-old"])
         #expect(snapshot.activeAutomations.map(\.id) == ["daily-review"])
-        #expect(snapshot.runningThreads.map(\.id) == ["thread-new", "thread-missing"])
+        #expect(snapshot.runningThreads.map(\.id) == ["thread-new", "thread-old"])
         #expect(snapshot.runningThreads.first?.thread.title == "Newer thread")
         #expect(snapshot.runningThreads.first?.logCount == 12)
         #expect(snapshot.pendingActions.map(\.id) == ["act-1"])
@@ -75,6 +76,9 @@ struct CodexLogTests {
         let fixture = try CodexLogFixture()
         try Data().write(to: fixture.rootURL.appendingPathComponent("state_5.sqlite"))
         try fixture.writeEmptyLogsDatabase()
+        let nowMilliseconds = Int(Date().timeIntervalSince1970 * 1_000)
+        let activeSession = try fixture.writeSessionFile(name: "active", completed: false)
+        let completedSession = try fixture.writeSessionFile(name: "complete", completed: true)
 
         let reader = CodexStateReader(codexHome: fixture.rootURL) { command in
             guard command.first == "/usr/bin/sqlite3" else {
@@ -83,12 +87,16 @@ struct CodexLogTests {
             let query = command.last ?? ""
             if query.contains("from threads") {
                 return """
-                thread-a\tActive work\t1779229000000\t0\t/Users/example/project
-                thread-b\tArchived work\t1779228000000\t1\t/Users/example/old
+                thread-a\tActive work\t\(nowMilliseconds)\t0\t/Users/example/project\t\(activeSession)
+                thread-b\tArchived work\t\(nowMilliseconds - 10_000)\t1\t/Users/example/old\t
+                thread-c\tCompleted work\t\(nowMilliseconds - 20_000)\t0\t/Users/example/done\t\(completedSession)
                 """
             }
             if query.contains("from logs") {
-                return "thread-a\t42\t1779229300"
+                return """
+                thread-a\t42\t\(Int(Date().timeIntervalSince1970))
+                thread-c\t9\t\(Int(Date().timeIntervalSince1970))
+                """
             }
             if query.contains("from jobs") {
                 return """
@@ -99,10 +107,10 @@ struct CodexLogTests {
             return ""
         }
 
-        let snapshot = reader.snapshot(threadLimit: 2)
+        let snapshot = reader.snapshot(threadLimit: 3)
 
-        #expect(snapshot.threads.map(\.id) == ["thread-a", "thread-b"])
-        #expect(snapshot.activeThreads.map(\.id) == ["thread-a"])
+        #expect(snapshot.threads.map(\.id) == ["thread-a", "thread-b", "thread-c"])
+        #expect(snapshot.activeThreads.map(\.id) == ["thread-a", "thread-c"])
         #expect(snapshot.runningThreads.map(\.id) == ["thread-a"])
         #expect(snapshot.runningThreads.first?.thread.title == "Active work")
         #expect(snapshot.runningThreads.first?.logCount == 42)
@@ -206,6 +214,22 @@ private struct CodexLogFixture {
             atomically: true,
             encoding: .utf8
         )
+    }
+
+    func writeSessionFile(name: String, completed: Bool) throws -> String {
+        let directory = rootURL.appendingPathComponent("sessions", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appendingPathComponent("\(name).jsonl")
+        var lines = [
+            #"{"timestamp":"2026-05-20T20:00:00Z","type":"turn_context","payload":{}}"#,
+            #"{"timestamp":"2026-05-20T20:00:01Z","type":"response_item","payload":{"type":"message"}}"#
+        ]
+        if completed {
+            lines.append(#"{"timestamp":"2026-05-20T20:00:02Z","type":"event_msg","payload":{"type":"task_complete"}}"#)
+        }
+        try lines.joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: url.path)
+        return url.path
     }
 
     func appendAction(_ line: String) throws {

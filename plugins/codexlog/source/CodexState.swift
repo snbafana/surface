@@ -6,6 +6,7 @@ struct CodexThreadSummary: Equatable, Identifiable, Sendable {
     var cwd: String?
     var updatedAt: Date?
     var isArchived: Bool
+    var rolloutPath: String?
 }
 
 struct CodexAutomationSummary: Equatable, Identifiable, Sendable {
@@ -140,7 +141,7 @@ struct CodexStateReader {
         self.runCommand = runCommand
     }
 
-    func snapshot(threadLimit: Int = 8, runningWindowSeconds: Int = 300) -> CodexSnapshot {
+    func snapshot(threadLimit: Int = 8, runningWindowSeconds: Int = 900) -> CodexSnapshot {
         let threads = readThreads(limit: max(threadLimit, 50))
         return CodexSnapshot(
             threads: Array(threads.prefix(max(1, threadLimit))),
@@ -180,9 +181,14 @@ struct CodexStateReader {
         let database = codexHome.appendingPathComponent("state_5.sqlite")
         if fileManager.fileExists(atPath: database.path) {
             let query = """
-            select id, replace(title, char(9), ' '), updated_at_ms, archived, replace(cwd, char(9), ' ')
+            select id,
+                   replace(title, char(9), ' '),
+                   coalesce(updated_at_ms, updated_at * 1000),
+                   archived,
+                   replace(cwd, char(9), ' '),
+                   replace(rollout_path, char(9), ' ')
             from threads
-            order by updated_at_ms desc
+            order by coalesce(updated_at_ms, updated_at * 1000) desc
             limit \(max(1, limit));
             """
             if let output = try? runCommand(["/usr/bin/sqlite3", "-separator", "\t", database.path, query]) {
@@ -201,50 +207,36 @@ struct CodexStateReader {
         limit: Int,
         windowSeconds: Int
     ) -> [CodexRunningThread] {
-        let database = codexHome.appendingPathComponent("logs_2.sqlite")
-        guard fileManager.fileExists(atPath: database.path),
-              let output = try? runCommand([
-                  "/usr/bin/sqlite3",
-                  "-separator",
-                  "\t",
-                  database.path,
-                  """
-                  select thread_id, count(*), max(ts)
-                  from logs
-                  where thread_id is not null
-                    and ts >= strftime('%s','now') - \(max(1, windowSeconds))
-                  group by thread_id
-                  order by max(ts) desc
-                  limit \(max(1, limit));
-                  """
-              ]) else {
-            return []
-        }
+        let windowSeconds = max(1, windowSeconds)
+        let cutoff = Date().addingTimeInterval(-TimeInterval(windowSeconds))
+        let logActivity = readRecentLogActivity(windowSeconds: windowSeconds)
 
-        let threadsByID = Dictionary(uniqueKeysWithValues: knownThreads.map { ($0.id, $0) })
-        return output
-            .split(separator: "\n")
-            .compactMap { line in
-                let columns = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
-                guard columns.count == 3, let logCount = Int(columns[1]) else {
+        return knownThreads
+            .filter { !$0.isArchived }
+            .compactMap { thread in
+                let sessionURL = rolloutURL(for: thread.rolloutPath)
+                let sessionModifiedAt = sessionURL.flatMap(modificationDate)
+                let logSeenAt = logActivity[thread.id]?.lastSeenAt
+                let lastSeenAt = latestDate(thread.updatedAt, sessionModifiedAt, logSeenAt)
+
+                guard let lastSeenAt, lastSeenAt >= cutoff else {
+                    return nil
+                }
+                guard !sessionLooksComplete(sessionURL) else {
                     return nil
                 }
 
-                let id = columns[0]
-                let lastSeenAt = secondsDate(columns[2])
-                let thread = threadsByID[id] ?? CodexThreadSummary(
-                    id: id,
-                    title: id,
-                    cwd: nil,
-                    updatedAt: lastSeenAt,
-                    isArchived: false
-                )
                 return CodexRunningThread(
                     thread: thread,
-                    logCount: logCount,
+                    logCount: logActivity[thread.id]?.count ?? 0,
                     lastSeenAt: lastSeenAt
                 )
             }
+            .sorted {
+                ($0.lastSeenAt ?? .distantPast) > ($1.lastSeenAt ?? .distantPast)
+            }
+            .prefix(max(1, limit))
+            .map { $0 }
     }
 
     private func parseSQLiteThreads(_ output: String) -> [CodexThreadSummary] {
@@ -258,7 +250,8 @@ struct CodexStateReader {
                     title: columns[1].isEmpty ? "Untitled" : columns[1],
                     cwd: columns[4].isEmpty ? nil : columns[4],
                     updatedAt: millisecondsDate(columns[2]),
-                    isArchived: columns[3] == "1"
+                    isArchived: columns[3] == "1",
+                    rolloutPath: columns.count > 5 && !columns[5].isEmpty ? columns[5] : nil
                 )
             }
     }
@@ -281,13 +274,94 @@ struct CodexStateReader {
                     id: row.id,
                     title: row.threadName,
                     cwd: nil,
-                    updatedAt: row.updatedAt.flatMap(millisecondsDate),
-                    isArchived: false
+                    updatedAt: row.updatedAt.flatMap(timestampDate),
+                    isArchived: false,
+                    rolloutPath: nil
                 )
             }
             .sorted { ($0.updatedAt ?? .distantPast) > ($1.updatedAt ?? .distantPast) }
             .prefix(max(1, limit))
             .map { $0 }
+    }
+
+    private func readRecentLogActivity(windowSeconds: Int) -> [String: (count: Int, lastSeenAt: Date?)] {
+        let database = codexHome.appendingPathComponent("logs_2.sqlite")
+        guard fileManager.fileExists(atPath: database.path),
+              let output = try? runCommand([
+                  "/usr/bin/sqlite3",
+                  "-separator",
+                  "\t",
+                  database.path,
+                  """
+                  select thread_id, count(*), max(ts)
+                  from logs
+                  where thread_id is not null
+                    and thread_id != ''
+                    and ts >= strftime('%s','now') - \(max(1, windowSeconds))
+                  group by thread_id;
+                  """
+              ]) else {
+            return [:]
+        }
+
+        var activity: [String: (count: Int, lastSeenAt: Date?)] = [:]
+        for line in output.split(separator: "\n") {
+            let columns = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+            guard columns.count == 3, let count = Int(columns[1]) else {
+                continue
+            }
+            activity[columns[0]] = (count: count, lastSeenAt: secondsDate(columns[2]))
+        }
+        return activity
+    }
+
+    private func rolloutURL(for path: String?) -> URL? {
+        guard let path, !path.isEmpty else {
+            return nil
+        }
+
+        let expandedPath = (path as NSString).expandingTildeInPath
+        if expandedPath.hasPrefix("/") {
+            return URL(fileURLWithPath: expandedPath)
+        }
+        return codexHome.appendingPathComponent(expandedPath)
+    }
+
+    private func modificationDate(for url: URL) -> Date? {
+        let attributes = try? fileManager.attributesOfItem(atPath: url.path)
+        return attributes?[.modificationDate] as? Date
+    }
+
+    private func sessionLooksComplete(_ url: URL?) -> Bool {
+        guard let url, let text = recentSessionText(at: url) else {
+            return false
+        }
+
+        for line in text.split(separator: "\n").reversed() {
+            if line.contains(#""type":"turn_context""#) {
+                return false
+            }
+            if line.contains(#""type":"task_complete""#) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private func recentSessionText(at url: URL, byteLimit: UInt64 = 65_536) -> String? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else {
+            return nil
+        }
+        defer { try? handle.close() }
+
+        let size = ((try? fileManager.attributesOfItem(atPath: url.path)[.size]) as? NSNumber)?.uint64Value ?? 0
+        if size > byteLimit {
+            try? handle.seek(toOffset: size - byteLimit)
+        }
+        guard let data = try? handle.readToEnd() else {
+            return nil
+        }
+        return String(data: data, encoding: .utf8)
     }
 
     private func readAutomations() -> [CodexAutomationSummary] {
@@ -718,6 +792,18 @@ struct CodexStateReader {
             return nil
         }
         return Date(timeIntervalSince1970: seconds)
+    }
+
+    private func timestampDate(_ raw: String) -> Date? {
+        if let value = Double(raw) {
+            let seconds = value > 10_000_000_000 ? value / 1_000 : value
+            return Date(timeIntervalSince1970: seconds)
+        }
+        return ISO8601DateFormatter().date(from: raw)
+    }
+
+    private func latestDate(_ dates: Date?...) -> Date? {
+        dates.compactMap { $0 }.max()
     }
 }
 

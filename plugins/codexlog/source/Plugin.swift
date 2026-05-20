@@ -23,18 +23,33 @@ final class Runtime: ObservableObject, BlockRuntime {
     @Published private(set) var isRunning = false
     @Published private(set) var snapshot = CodexSnapshot()
     private let reader: CodexStateReader
+    private var refreshTask: Task<Void, Never>?
 
     init(reader: CodexStateReader = CodexStateReader()) {
         self.reader = reader
     }
 
     func start() {
+        guard !isRunning else {
+            return
+        }
         isRunning = true
         reload()
+        refreshTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                guard let self, self.isRunning else {
+                    return
+                }
+                self.reload()
+            }
+        }
     }
 
     func stop() {
         isRunning = false
+        refreshTask?.cancel()
+        refreshTask = nil
     }
 
     func refresh() async {
@@ -269,15 +284,24 @@ private struct RunningThreadRow: View {
                 .font(.caption.weight(.medium))
                 .lineLimit(1)
             Spacer(minLength: 8)
-            Text(eventCount)
+            Text(lastSeenText)
                 .font(.caption2.monospacedDigit())
                 .foregroundStyle(.secondary)
         }
     }
 
-    private var eventCount: String {
-        "\(runningThread.logCount) event\(runningThread.logCount == 1 ? "" : "s")"
+    private var lastSeenText: String {
+        guard let lastSeenAt = runningThread.lastSeenAt else {
+            return "active"
+        }
+        return Self.relativeDateFormatter.localizedString(for: lastSeenAt, relativeTo: Date())
     }
+
+    private static let relativeDateFormatter: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter
+    }()
 }
 
 private struct ActionCard: View {

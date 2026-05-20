@@ -4,7 +4,7 @@ import Core
 
 final class SurfacePanel: NSPanel {
     init() {
-        let frame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1200, height: 800)
+        let frame = Self.targetFrameForDisplay()
         super.init(
             contentRect: frame,
             styleMask: [.borderless, .fullSizeContentView],
@@ -18,7 +18,7 @@ final class SurfacePanel: NSPanel {
     override var canBecomeMain: Bool { false }
 
     func prepareForDisplay() {
-        let targetFrame = NSScreen.main?.visibleFrame ?? frame
+        let targetFrame = Self.targetFrameForDisplay()
         isOpaque = false
         backgroundColor = .clear
         hasShadow = false
@@ -27,8 +27,16 @@ final class SurfacePanel: NSPanel {
         isReleasedWhenClosed = false
         isMovable = false
         isMovableByWindowBackground = false
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .moveToActiveSpace]
         setFrame(targetFrame, display: true)
+    }
+
+    private static func targetFrameForDisplay() -> NSRect {
+        let mouseLocation = NSEvent.mouseLocation
+        let screen = NSScreen.screens.first { screen in
+            NSMouseInRect(mouseLocation, screen.frame, false)
+        } ?? NSScreen.main ?? NSScreen.screens.first
+        return screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1200, height: 800)
     }
 }
 
