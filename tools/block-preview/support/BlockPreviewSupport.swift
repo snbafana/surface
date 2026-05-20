@@ -258,6 +258,24 @@ enum BlockPreviewFixture {
     private static func makeCodexLogFixture(in directory: URL) throws {
         let nowSeconds = Int(Date().timeIntervalSince1970)
         let nowMilliseconds = nowSeconds * 1_000
+        let sessionsDirectory = directory.appendingPathComponent("sessions", isDirectory: true)
+        try FileManager.default.createDirectory(at: sessionsDirectory, withIntermediateDirectories: true)
+        let reviewSession = sessionsDirectory.appendingPathComponent("review.jsonl")
+        let notesSession = sessionsDirectory.appendingPathComponent("notes.jsonl")
+        let quietSession = sessionsDirectory.appendingPathComponent("quiet.jsonl")
+
+        try [
+            #"{"timestamp":"2026-05-20T20:00:00Z","type":"turn_context","payload":{}}"#,
+            #"{"timestamp":"2026-05-20T20:00:01Z","type":"response_item","payload":{"type":"function_call"}}"#
+        ].joined(separator: "\n").write(to: reviewSession, atomically: true, encoding: .utf8)
+        try [
+            #"{"timestamp":"2026-05-20T20:00:00Z","type":"turn_context","payload":{}}"#,
+            #"{"timestamp":"2026-05-20T20:00:01Z","type":"response_item","payload":{"type":"reasoning"}}"#
+        ].joined(separator: "\n").write(to: notesSession, atomically: true, encoding: .utf8)
+        try [
+            #"{"timestamp":"2026-05-20T20:00:00Z","type":"turn_context","payload":{}}"#,
+            #"{"timestamp":"2026-05-20T20:00:01Z","type":"event_msg","payload":{"type":"task_complete"}}"#
+        ].joined(separator: "\n").write(to: quietSession, atomically: true, encoding: .utf8)
 
         try [
             #"{"id":"thread-review","thread_name":"Review generated AGENTS.md change","updated_at":"\#(nowMilliseconds)"}"#,
@@ -269,6 +287,39 @@ enum BlockPreviewFixture {
             to: directory.appendingPathComponent("session_index.jsonl"),
             atomically: true,
             encoding: .utf8
+        )
+
+        let stateDatabase = directory.appendingPathComponent("state_5.sqlite")
+        try runSQLite(
+            database: stateDatabase,
+            statements: """
+            create table threads(
+                id text,
+                title text,
+                updated_at integer,
+                updated_at_ms integer,
+                archived integer,
+                cwd text,
+                rollout_path text,
+                source text,
+                thread_source text,
+                agent_nickname text,
+                agent_role text
+            );
+            create table jobs(kind text, status text);
+            create table agent_jobs(status text);
+            create table agent_job_items(status text);
+            create table thread_spawn_edges(parent_thread_id text, child_thread_id text);
+            insert into threads(id, title, updated_at, updated_at_ms, archived, cwd, rollout_path, source, thread_source, agent_nickname, agent_role) values
+                ('thread-review', 'Review generated AGENTS.md change', \(nowSeconds), \(nowMilliseconds), 0, '/Users/snbafana/Documents/personal/Scratch/projects/surface', '\(reviewSession.path)', 'vscode', 'user', '', ''),
+                ('thread-notes', 'Daily note idea extraction', \(nowSeconds - 20), \(nowMilliseconds - 20_000), 0, '/Users/snbafana/Documents/personal/Obsidian-Vault', '\(notesSession.path)', 'vscode', 'user', '', ''),
+                ('thread-quiet', 'Finished background thread', \(nowSeconds - 120), \(nowMilliseconds - 120_000), 0, '/Users/snbafana/Documents/personal/Scratch', '\(quietSession.path)', 'vscode', 'user', '', '');
+            insert into jobs(kind, status) values
+                ('memory_stage1', 'done'),
+                ('memory_stage1', 'error');
+            insert into thread_spawn_edges(parent_thread_id, child_thread_id) values
+                ('thread-review', 'thread-review-child-1');
+            """
         )
 
         let logsDatabase = directory.appendingPathComponent("logs_2.sqlite")

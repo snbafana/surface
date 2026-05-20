@@ -113,9 +113,9 @@ private struct ContentView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 9) {
+            statusStrip
             actionQueue
-            Divider().opacity(0.45)
             liveThreads
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -145,6 +145,19 @@ private struct ContentView: View {
             }
         }
         .animation(.snappy(duration: 0.22), value: actionIDs)
+    }
+
+    private var statusStrip: some View {
+        HStack(spacing: 8) {
+            StatusPill(title: "Queue", value: "\(pendingActions.count)")
+            StatusPill(title: "Active", value: "\(snapshot.runningThreads.count)")
+            StatusPill(
+                title: "Issues",
+                value: "\(issueCount)",
+                tint: issueCount > 0 ? .red : .secondary,
+                isEmphasized: issueCount > 0
+            )
+        }
     }
 
     private var liveThreads: some View {
@@ -197,6 +210,10 @@ private struct ContentView: View {
 
     private var actionQueueValue: String {
         "\(pendingActions.count) pending"
+    }
+
+    private var issueCount: Int {
+        snapshot.jobsNeedingAttention.reduce(0) { $0 + $1.count }
     }
 
     private func threadTitle(for threadID: String?) -> String? {
@@ -256,6 +273,27 @@ private struct ContentView: View {
     }
 }
 
+private struct StatusPill: View {
+    var title: String
+    var value: String
+    var tint: Color = .secondary
+    var isEmphasized = false
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(title)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.caption.monospacedDigit().weight(.semibold))
+                .foregroundStyle(isEmphasized ? tint : .primary)
+        }
+        .padding(.horizontal, 8)
+        .frame(height: 26)
+        .background(.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 7))
+    }
+}
+
 private struct SectionHeader: View {
     var title: String
     var value: String
@@ -276,23 +314,39 @@ private struct RunningThreadRow: View {
     let runningThread: CodexRunningThread
 
     var body: some View {
-        HStack(alignment: .center, spacing: 8) {
+        HStack(alignment: .top, spacing: 8) {
             Circle()
-                .fill(.green)
+                .fill(stateColor)
                 .frame(width: 7, height: 7)
-            Text(runningThread.thread.title)
-                .font(.caption.weight(.medium))
-                .lineLimit(1)
-            Spacer(minLength: 8)
-            Text(lastSeenText)
-                .font(.caption2.monospacedDigit())
-                .foregroundStyle(.secondary)
+                .padding(.top, 5)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(runningThread.thread.title)
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(1)
+                    Spacer(minLength: 6)
+                    Text(lastSeenText)
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                Text(metadata)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
         }
+        .padding(.vertical, 3)
     }
 
     private var lastSeenText: String {
         guard let lastSeenAt = runningThread.lastSeenAt else {
             return "active"
+        }
+        if abs(lastSeenAt.timeIntervalSinceNow) < 2 {
+            return "now"
         }
         return Self.relativeDateFormatter.localizedString(for: lastSeenAt, relativeTo: Date())
     }
@@ -302,6 +356,46 @@ private struct RunningThreadRow: View {
         formatter.unitsStyle = .abbreviated
         return formatter
     }()
+
+    private var stateColor: Color {
+        switch runningThread.state {
+        case .running:
+            return .green
+        case .interrupted:
+            return .orange
+        case .complete:
+            return .secondary
+        case .unknown:
+            return .accentColor
+        }
+    }
+
+    private var metadata: String {
+        var parts: [String] = []
+        if let cwd = runningThread.thread.cwd, !cwd.isEmpty {
+            parts.append(shortPath(cwd))
+        }
+        if let lastEvent = runningThread.lastEvent, !lastEvent.isEmpty {
+            parts.append(lastEvent)
+        }
+        if runningThread.childThreadCount > 0 {
+            parts.append("\(runningThread.childThreadCount) child")
+        }
+        if runningThread.logCount > 0 {
+            parts.append("\(runningThread.logCount) events")
+        }
+        return parts.isEmpty ? runningThread.state.rawValue : parts.joined(separator: " · ")
+    }
+
+    private func shortPath(_ path: String) -> String {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let displayPath = path.hasPrefix(home) ? "~" + String(path.dropFirst(home.count)) : path
+        let components = displayPath.split(separator: "/").map(String.init)
+        guard components.count > 3 else {
+            return displayPath
+        }
+        return components.suffix(3).joined(separator: "/")
+    }
 }
 
 private struct ActionCard: View {
@@ -313,13 +407,18 @@ private struct ActionCard: View {
     @State private var dragOffset: CGFloat = 0
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(action.title)
-                    .font(.caption.weight(.semibold))
-                    .lineLimit(3)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 8)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                if let sourceText {
+                    Text(sourceText)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .padding(.horizontal, 7)
+                        .frame(height: 22)
+                        .background(.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: 6))
+                }
+                Spacer(minLength: 6)
                 if let queuePosition {
                     Text(queuePosition)
                         .font(.caption2.weight(.medium))
@@ -328,6 +427,11 @@ private struct ActionCard: View {
                 }
             }
 
+            Text(action.title)
+                .font(.caption.weight(.semibold))
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+
             metadataView
 
             if let detail = action.detail {
@@ -335,7 +439,7 @@ private struct ActionCard: View {
                 Text(detail)
                     .font(.caption)
                     .foregroundStyle(.primary.opacity(0.82))
-                    .lineLimit(7)
+                    .lineLimit(4)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -350,11 +454,11 @@ private struct ActionCard: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(cardTint.opacity(abs(dragOffset) > 0 ? 0.10 : 0.055), in: RoundedRectangle(cornerRadius: 8))
+        .background(cardTint.opacity(abs(dragOffset) > 0 ? 0.10 : 0.05), in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
-                .stroke(cardTint.opacity(abs(dragOffset) > 0 ? 0.35 : 0.10), lineWidth: 1)
-            }
+                .stroke(cardTint.opacity(abs(dragOffset) > 0 ? 0.35 : 0.12), lineWidth: 1)
+        }
         .offset(x: dragOffset)
         .rotationEffect(.degrees(Double(dragOffset / 48)))
         .gesture(
@@ -382,7 +486,7 @@ private struct ActionCard: View {
             Label(title, systemImage: systemImage)
                 .font(.caption2.weight(.semibold))
                 .frame(maxWidth: .infinity)
-                .frame(height: 26)
+                .frame(height: 30)
         }
         .buttonStyle(.plain)
         .foregroundStyle(tint)
@@ -396,20 +500,25 @@ private struct ActionCard: View {
 
     @ViewBuilder
     private var metadataView: some View {
-        if sourceText != nil || proposedText != nil || !contextLines.isEmpty {
+        if proposedText != nil || !contextLines.isEmpty {
             VStack(alignment: .leading, spacing: 2) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    if let sourceText {
-                        Text(sourceText)
-                            .lineLimit(1)
-                    }
-                    Spacer(minLength: 8)
+                if contextLines.isEmpty {
                     if let proposedText {
                         Text(proposedText)
                             .lineLimit(1)
                     }
+                } else {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(contextLines.first ?? "")
+                            .lineLimit(1)
+                        Spacer(minLength: 8)
+                        if let proposedText {
+                            Text(proposedText)
+                                .lineLimit(1)
+                        }
+                    }
                 }
-                ForEach(contextLines, id: \.self) { contextLine in
+                ForEach(contextLines.dropFirst(), id: \.self) { contextLine in
                     Text(contextLine)
                         .lineLimit(1)
                 }

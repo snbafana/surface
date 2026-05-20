@@ -79,6 +79,7 @@ struct CodexLogTests {
         let nowMilliseconds = Int(Date().timeIntervalSince1970 * 1_000)
         let activeSession = try fixture.writeSessionFile(name: "active", completed: false)
         let completedSession = try fixture.writeSessionFile(name: "complete", completed: true)
+        let interruptedSession = try fixture.writeSessionFile(name: "interrupted", completed: false, aborted: true)
 
         let reader = CodexStateReader(codexHome: fixture.rootURL) { command in
             guard command.first == "/usr/bin/sqlite3" else {
@@ -90,6 +91,7 @@ struct CodexLogTests {
                 thread-a\tActive work\t\(nowMilliseconds)\t0\t/Users/example/project\t\(activeSession)
                 thread-b\tArchived work\t\(nowMilliseconds - 10_000)\t1\t/Users/example/old\t
                 thread-c\tCompleted work\t\(nowMilliseconds - 20_000)\t0\t/Users/example/done\t\(completedSession)
+                thread-d\tInterrupted work\t\(nowMilliseconds - 5_000)\t0\t/Users/example/stuck\t\(interruptedSession)
                 """
             }
             if query.contains("from logs") {
@@ -97,6 +99,9 @@ struct CodexLogTests {
                 thread-a\t42\t\(Int(Date().timeIntervalSince1970))
                 thread-c\t9\t\(Int(Date().timeIntervalSince1970))
                 """
+            }
+            if query.contains("from thread_spawn_edges") {
+                return "thread-a\t2"
             }
             if query.contains("from jobs") {
                 return """
@@ -107,13 +112,17 @@ struct CodexLogTests {
             return ""
         }
 
-        let snapshot = reader.snapshot(threadLimit: 3)
+        let snapshot = reader.snapshot(threadLimit: 4)
 
-        #expect(snapshot.threads.map(\.id) == ["thread-a", "thread-b", "thread-c"])
-        #expect(snapshot.activeThreads.map(\.id) == ["thread-a", "thread-c"])
-        #expect(snapshot.runningThreads.map(\.id) == ["thread-a"])
-        #expect(snapshot.runningThreads.first?.thread.title == "Active work")
-        #expect(snapshot.runningThreads.first?.logCount == 42)
+        #expect(snapshot.threads.map(\.id) == ["thread-a", "thread-b", "thread-c", "thread-d"])
+        #expect(snapshot.activeThreads.map(\.id) == ["thread-a", "thread-c", "thread-d"])
+        #expect(Set(snapshot.runningThreads.map(\.id)) == ["thread-a", "thread-d"])
+        let activeThread = try #require(snapshot.runningThreads.first { $0.id == "thread-a" })
+        let interruptedThread = try #require(snapshot.runningThreads.first { $0.id == "thread-d" })
+        #expect(activeThread.thread.title == "Active work")
+        #expect(activeThread.logCount == 42)
+        #expect(activeThread.childThreadCount == 2)
+        #expect(interruptedThread.state == .interrupted)
         #expect(snapshot.jobs.contains(CodexJobSummary(kind: "memory_stage1", status: "done", count: 4)))
         #expect(snapshot.failedJobs == [CodexJobSummary(kind: "memory_stage1", status: "error", count: 2)])
     }
@@ -216,7 +225,7 @@ private struct CodexLogFixture {
         )
     }
 
-    func writeSessionFile(name: String, completed: Bool) throws -> String {
+    func writeSessionFile(name: String, completed: Bool, aborted: Bool = false) throws -> String {
         let directory = rootURL.appendingPathComponent("sessions", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = directory.appendingPathComponent("\(name).jsonl")
@@ -226,6 +235,8 @@ private struct CodexLogFixture {
         ]
         if completed {
             lines.append(#"{"timestamp":"2026-05-20T20:00:02Z","type":"event_msg","payload":{"type":"task_complete"}}"#)
+        } else if aborted {
+            lines.append(#"{"timestamp":"2026-05-20T20:00:02Z","type":"event_msg","payload":{"type":"turn_aborted"}}"#)
         }
         try lines.joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: url.path)

@@ -8,8 +8,10 @@ Codex Log is a Surface block for watching local Codex activity. It is not a Code
   - recent thread metadata from `threads`
   - rollout file paths used to connect thread rows back to session JSONL
   - job status counts from `jobs`
+  - spawned child-thread counts from `thread_spawn_edges`
+  - agent job/item counts from `agent_jobs` and `agent_job_items` when present
 - `~/.codex/sessions/**/*.jsonl`
-  - session file modification times and completion markers for active-thread detection
+  - session file modification times, tail events, `turn_context`, `task_complete`, and `turn_aborted` markers for active-thread detection
 - `~/.codex/logs_2.sqlite`
   - recent per-thread event counts when the log row maps to a known thread
 - `~/.codex/automations/*/automation.toml`
@@ -18,6 +20,15 @@ Codex Log is a Surface block for watching local Codex activity. It is not a Code
   - local Codex process groups
 - `~/.codex/codexlog-actions.jsonl`
   - proposed actions and approval/denial/cancel decisions
+
+Other Codex-local files were inspected but are not core UI state yet:
+
+- `~/.codex/session_index.jsonl`: fallback thread index when `state_5.sqlite` is missing.
+- `~/.codex/history.jsonl`: prompt history, not a live-work source.
+- `~/.codex/transcription-history.jsonl`: dictation history, not a Codex work queue.
+- `~/.codex/.codex-global-state.json`: desktop UI state, pinned threads, workspace hints.
+- `~/.codex/ambient-suggestions/*/ambient-suggestions.json`: suggestion cache by project root.
+- `~/.codex/models_cache.json`, `version.json`, `keybindings.json`, `config.toml`: settings/cache, not live thread state.
 
 ## Action Queue Contract
 
@@ -145,8 +156,9 @@ The old PM companion automations are intentionally removed; there should be only
 
 The block renders:
 
+- `Status strip`: pending approvals, active thread count, and job/error issue count.
 - `Action Queue`: one focused pending action at a time, including source automation, target file, thread, proposed time, and the exact point/link/idea under review.
-- `Running Threads`: known non-archived Codex threads with recent `state_5.sqlite` / session-file activity, excluding sessions whose latest tail includes `task_complete`. `logs_2.sqlite` is supporting metadata only because it can contain log-only conversation ids that do not map to real local session files.
+- `Running Threads`: known non-archived Codex threads with recent `state_5.sqlite` / session-file activity, tail state, cwd, last event kind, child-thread count, and telemetry event count. Sessions whose latest tail includes `task_complete` are excluded. `logs_2.sqlite` is supporting metadata only because it can contain log-only conversation ids that do not map to real local session files.
 
 Interaction:
 

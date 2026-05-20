@@ -7,6 +7,10 @@ struct CodexThreadSummary: Equatable, Identifiable, Sendable {
     var updatedAt: Date?
     var isArchived: Bool
     var rolloutPath: String?
+    var source: String?
+    var threadSource: String?
+    var agentNickname: String?
+    var agentRole: String?
 }
 
 struct CodexAutomationSummary: Equatable, Identifiable, Sendable {
@@ -44,10 +48,20 @@ struct CodexRunningThread: Equatable, Identifiable, Sendable {
     var thread: CodexThreadSummary
     var logCount: Int
     var lastSeenAt: Date?
+    var state: CodexThreadRunState
+    var lastEvent: String?
+    var childThreadCount: Int
 
     var id: String {
         thread.id
     }
+}
+
+enum CodexThreadRunState: String, Sendable {
+    case running
+    case interrupted
+    case complete
+    case unknown
 }
 
 enum CodexActionStatus: String, Codable, Sendable {
@@ -186,7 +200,11 @@ struct CodexStateReader {
                    coalesce(updated_at_ms, updated_at * 1000),
                    archived,
                    replace(cwd, char(9), ' '),
-                   replace(rollout_path, char(9), ' ')
+                   replace(rollout_path, char(9), ' '),
+                   source,
+                   coalesce(thread_source, ''),
+                   coalesce(agent_nickname, ''),
+                   coalesce(agent_role, '')
             from threads
             order by coalesce(updated_at_ms, updated_at * 1000) desc
             limit \(max(1, limit));
@@ -210,26 +228,31 @@ struct CodexStateReader {
         let windowSeconds = max(1, windowSeconds)
         let cutoff = Date().addingTimeInterval(-TimeInterval(windowSeconds))
         let logActivity = readRecentLogActivity(windowSeconds: windowSeconds)
+        let childCounts = readChildThreadCounts()
 
         return knownThreads
             .filter { !$0.isArchived }
             .compactMap { thread in
                 let sessionURL = rolloutURL(for: thread.rolloutPath)
                 let sessionModifiedAt = sessionURL.flatMap(modificationDate)
+                let sessionTail = sessionTail(for: sessionURL)
                 let logSeenAt = logActivity[thread.id]?.lastSeenAt
                 let lastSeenAt = latestDate(thread.updatedAt, sessionModifiedAt, logSeenAt)
 
                 guard let lastSeenAt, lastSeenAt >= cutoff else {
                     return nil
                 }
-                guard !sessionLooksComplete(sessionURL) else {
+                guard sessionTail.state != .complete else {
                     return nil
                 }
 
                 return CodexRunningThread(
                     thread: thread,
                     logCount: logActivity[thread.id]?.count ?? 0,
-                    lastSeenAt: lastSeenAt
+                    lastSeenAt: lastSeenAt,
+                    state: sessionTail.state,
+                    lastEvent: sessionTail.lastEvent,
+                    childThreadCount: childCounts[thread.id] ?? 0
                 )
             }
             .sorted {
@@ -251,7 +274,11 @@ struct CodexStateReader {
                     cwd: columns[4].isEmpty ? nil : columns[4],
                     updatedAt: millisecondsDate(columns[2]),
                     isArchived: columns[3] == "1",
-                    rolloutPath: columns.count > 5 && !columns[5].isEmpty ? columns[5] : nil
+                    rolloutPath: columns.count > 5 && !columns[5].isEmpty ? columns[5] : nil,
+                    source: columns.count > 6 && !columns[6].isEmpty ? columns[6] : nil,
+                    threadSource: columns.count > 7 && !columns[7].isEmpty ? columns[7] : nil,
+                    agentNickname: columns.count > 8 && !columns[8].isEmpty ? columns[8] : nil,
+                    agentRole: columns.count > 9 && !columns[9].isEmpty ? columns[9] : nil
                 )
             }
     }
@@ -276,7 +303,11 @@ struct CodexStateReader {
                     cwd: nil,
                     updatedAt: row.updatedAt.flatMap(timestampDate),
                     isArchived: false,
-                    rolloutPath: nil
+                    rolloutPath: nil,
+                    source: nil,
+                    threadSource: nil,
+                    agentNickname: nil,
+                    agentRole: nil
                 )
             }
             .sorted { ($0.updatedAt ?? .distantPast) > ($1.updatedAt ?? .distantPast) }
@@ -315,6 +346,34 @@ struct CodexStateReader {
         return activity
     }
 
+    private func readChildThreadCounts() -> [String: Int] {
+        let database = codexHome.appendingPathComponent("state_5.sqlite")
+        guard fileManager.fileExists(atPath: database.path),
+              let output = try? runCommand([
+                  "/usr/bin/sqlite3",
+                  "-separator",
+                  "\t",
+                  database.path,
+                  """
+                  select parent_thread_id, count(*)
+                  from thread_spawn_edges
+                  group by parent_thread_id;
+                  """
+              ]) else {
+            return [:]
+        }
+
+        var counts: [String: Int] = [:]
+        for line in output.split(separator: "\n") {
+            let columns = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+            guard columns.count == 2, let count = Int(columns[1]) else {
+                continue
+            }
+            counts[columns[0]] = count
+        }
+        return counts
+    }
+
     private func rolloutURL(for path: String?) -> URL? {
         guard let path, !path.isEmpty else {
             return nil
@@ -332,20 +391,61 @@ struct CodexStateReader {
         return attributes?[.modificationDate] as? Date
     }
 
-    private func sessionLooksComplete(_ url: URL?) -> Bool {
+    private func sessionTail(for url: URL?) -> CodexSessionTail {
         guard let url, let text = recentSessionText(at: url) else {
-            return false
+            return CodexSessionTail(state: .unknown, lastEvent: nil)
         }
 
+        var lastEvent: String?
         for line in text.split(separator: "\n").reversed() {
+            if lastEvent == nil {
+                lastEvent = sessionEventLabel(for: line)
+            }
             if line.contains(#""type":"turn_context""#) {
-                return false
+                return CodexSessionTail(state: .running, lastEvent: lastEvent)
+            }
+            if line.contains(#""type":"turn_aborted""#) {
+                return CodexSessionTail(state: .interrupted, lastEvent: lastEvent ?? "interrupted")
             }
             if line.contains(#""type":"task_complete""#) {
-                return true
+                return CodexSessionTail(state: .complete, lastEvent: lastEvent ?? "complete")
             }
         }
-        return false
+        return CodexSessionTail(state: .unknown, lastEvent: lastEvent)
+    }
+
+    private func sessionEventLabel(for line: Substring) -> String? {
+        if line.contains(#""type":"token_count""#) || line.contains(#""type":"session_meta""#) {
+            return nil
+        }
+        if line.contains(#""type":"task_complete""#) {
+            return "complete"
+        }
+        if line.contains(#""type":"turn_aborted""#) {
+            return "interrupted"
+        }
+        if line.contains(#""type":"agent_message""#) {
+            return "message"
+        }
+        if line.contains(#""type":"user_message""#) {
+            return "user input"
+        }
+        if line.contains(#""type":"function_call_output""#) {
+            return "tool output"
+        }
+        if line.contains(#""type":"function_call""#) {
+            return "tool call"
+        }
+        if line.contains(#""type":"web_search_call""#) || line.contains(#""type":"web_search_end""#) {
+            return "web search"
+        }
+        if line.contains(#""type":"reasoning""#) {
+            return "reasoning"
+        }
+        if line.contains(#""type":"turn_context""#) {
+            return "running"
+        }
+        return nil
     }
 
     private func recentSessionText(at url: URL, byteLimit: UInt64 = 65_536) -> String? {
@@ -422,18 +522,43 @@ struct CodexStateReader {
 
     private func readJobs() -> [CodexJobSummary] {
         let database = codexHome.appendingPathComponent("state_5.sqlite")
-        guard fileManager.fileExists(atPath: database.path),
-              let output = try? runCommand([
-                  "/usr/bin/sqlite3",
-                  "-separator",
-                  "\t",
-                  database.path,
-                  "select kind, status, count(*) from jobs group by kind, status order by kind, status;"
-              ]) else {
+        guard fileManager.fileExists(atPath: database.path) else {
             return []
         }
 
-        return output
+        var summaries: [CodexJobSummary] = []
+        if let output = try? runCommand([
+            "/usr/bin/sqlite3",
+            "-separator",
+            "\t",
+            database.path,
+            "select kind, status, count(*) from jobs group by kind, status order by kind, status;"
+        ]) {
+            summaries.append(contentsOf: parseJobSummaries(output))
+        }
+        if let output = try? runCommand([
+            "/usr/bin/sqlite3",
+            "-separator",
+            "\t",
+            database.path,
+            "select 'agent jobs', status, count(*) from agent_jobs group by status order by status;"
+        ]) {
+            summaries.append(contentsOf: parseJobSummaries(output))
+        }
+        if let output = try? runCommand([
+            "/usr/bin/sqlite3",
+            "-separator",
+            "\t",
+            database.path,
+            "select 'agent job items', status, count(*) from agent_job_items group by status order by status;"
+        ]) {
+            summaries.append(contentsOf: parseJobSummaries(output))
+        }
+        return summaries
+    }
+
+    private func parseJobSummaries(_ output: String) -> [CodexJobSummary] {
+        output
             .split(separator: "\n")
             .compactMap { line in
                 let columns = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
@@ -869,6 +994,11 @@ private struct ActionCandidate {
     var title: String?
     var detail: String?
     var targetPath: String?
+}
+
+private struct CodexSessionTail {
+    var state: CodexThreadRunState
+    var lastEvent: String?
 }
 
 private enum JSONValue: Codable, Equatable, Sendable {
