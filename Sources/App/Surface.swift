@@ -20,7 +20,7 @@ final class Surface: ObservableObject {
         let keyboardShortcuts = KeyboardShortcuts()
         self.blocks = blocks
         self.keyboardShortcuts = keyboardShortcuts
-        workspace = DemoSurface.workspace(blocks: blocks)
+        workspace = try! SurfaceLayout.workspace(registry: blocks)
         runningBlocks = RunningBlocks(
             blocks: blocks,
             context: Block.Context(keyboardShortcuts: keyboardShortcuts)
@@ -40,12 +40,14 @@ final class Surface: ObservableObject {
     func show() {
         isVisible = true
         mode = .use
+        refreshRunningBlocks()
         applyVisibility()
     }
 
     func edit() {
         isVisible = true
         mode = .edit
+        refreshRunningBlocks()
         applyVisibility()
     }
 
@@ -74,6 +76,13 @@ final class Surface: ObservableObject {
             panel.makeKey()
         } else {
             panel.orderOut(nil)
+        }
+    }
+
+    private func refreshRunningBlocks() {
+        runningBlocks.sync(with: workspace.enabledBlocks)
+        Task {
+            await runningBlocks.refreshAll()
         }
     }
 }
@@ -108,6 +117,12 @@ final class RunningBlocks: ObservableObject {
         return runtime.makeView()
     }
 
+    func refreshAll() async {
+        for runtime in runtimes.values {
+            await runtime.refresh()
+        }
+    }
+
     private func runtime(for id: BlockID) -> (any BlockRuntime)? {
         if let runtime = runtimes[id] {
             return runtime
@@ -126,16 +141,4 @@ final class RunningBlocks: ObservableObject {
 enum SurfaceMode {
     case edit
     case use
-}
-
-@MainActor
-enum DemoSurface {
-    static func workspace(blocks: BlockRegistry = Blocks.registry) -> Workspace {
-        let layout = Layout(grid: Grid(columns: 24, rows: 16), blocks: [
-            Block.Instance(id: "quicksave", frame: GridFrame(x: 1, y: 1, width: 10, height: 5)),
-            Block.Instance(id: "copyhistory", frame: GridFrame(x: 12, y: 1, width: 8, height: 8)),
-            Block.Instance(id: "codexlog", frame: GridFrame(x: 5, y: 10, width: 10, height: 5))
-        ])
-        return try! Workspace(blocks: blocks.blocks, layout: layout)
-    }
 }

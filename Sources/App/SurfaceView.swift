@@ -31,7 +31,7 @@ struct SurfaceView: View {
                     .zIndex(10)
 
                 ForEach(surface.workspace.enabledBlocks) { block in
-                    blockCard(block, cellWidth: cellWidth, cellHeight: cellHeight)
+                    blockCard(block, grid: grid, container: proxy.size, cellWidth: cellWidth, cellHeight: cellHeight)
                 }
             }
         }
@@ -91,7 +91,7 @@ struct SurfaceView: View {
             }
             .padding(12)
             .frame(width: menuSize.width, height: menuSize.height, alignment: .topLeading)
-            .background(Style.panelBackground, in: RoundedRectangle(cornerRadius: 10))
+            .background(Style.panelMaterial, in: RoundedRectangle(cornerRadius: 10))
             .overlay {
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(Style.border, lineWidth: 1)
@@ -124,9 +124,16 @@ struct SurfaceView: View {
             }
     }
 
-    private func blockCard(_ block: Block.Instance, cellWidth: CGFloat, cellHeight: CGFloat) -> some View {
+    private func blockCard(
+        _ block: Block.Instance,
+        grid: Core.Grid,
+        container: CGSize,
+        cellWidth: CGFloat,
+        cellHeight: CGFloat
+    ) -> some View {
         let isDragging = dragging[block.id] != nil
         let isActive = surface.mode == .edit && (hoveredBlock == block.id || isDragging)
+        let rect = SurfaceLayout.rect(for: block.frame, grid: grid, in: container)
 
         return BlockChrome(
             title: title(for: block.id),
@@ -136,8 +143,8 @@ struct SurfaceView: View {
             surface.runningBlocks.view(for: block.id)
         }
         .frame(
-            width: CGFloat(block.frame.size.width) * cellWidth - 8,
-            height: CGFloat(block.frame.size.height) * cellHeight - 8,
+            width: rect.width,
+            height: rect.height,
             alignment: .topLeading
         )
         .overlay(alignment: .topTrailing) {
@@ -156,8 +163,8 @@ struct SurfaceView: View {
         )
         .scaleEffect(isDragging ? 1.015 : 1.0)
         .offset(
-            x: CGFloat(block.frame.origin.x) * cellWidth + 4,
-            y: CGFloat(block.frame.origin.y) * cellHeight + 4
+            x: rect.minX,
+            y: rect.minY
         )
         .offset(dragging[block.id] ?? .zero)
         .animation(.smooth(duration: 0.18), value: block.frame)

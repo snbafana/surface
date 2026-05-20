@@ -21,25 +21,26 @@ enum BlockPreviewCommand {
         case "all":
             let results = try BlockPreview.renderAll(outputDirectory: options.outputDirectory)
             printResults(results)
+        case "surface":
+            let result = try BlockPreview.renderSurface(
+                size: options.size ?? BlockPreview.liveCanvasSize(),
+                outputDirectory: options.outputDirectory
+            )
+            printSurfaceResult(result)
         case "help", "--help", "-h":
             printUsage()
         default:
             let fixture = options.fixture ?? "empty"
-            let size = options.size ?? defaultSize(for: BlockID(rawValue: command), fixture: fixture)
+            let blockID = BlockID(rawValue: command)
+            let size = options.size ?? BlockPreview.defaultSize(for: blockID, in: BlockPreview.liveCanvasSize())
             let result = try BlockPreview.render(
-                blockID: BlockID(rawValue: command),
+                blockID: blockID,
                 fixture: fixture,
                 size: size,
                 outputDirectory: options.outputDirectory
             )
             printResults([result])
         }
-    }
-
-    private static func defaultSize(for blockID: BlockID, fixture: String) -> CGSize {
-        BlockPreview.cases
-            .first { $0.blockID == blockID && $0.fixture == fixture }?
-            .size ?? CGSize(width: 420, height: 420)
     }
 
     private static func printResults(_ results: [BlockPreviewResult]) {
@@ -59,16 +60,32 @@ enum BlockPreviewCommand {
         }
     }
 
+    private static func printSurfaceResult(_ result: SurfacePreviewResult) {
+        let metrics = result.metrics
+        print(
+            [
+                "surface",
+                result.url.path,
+                "\(metrics.width)x\(metrics.height)",
+                "bytes=\(metrics.byteCount)",
+                "colors=\(metrics.distinctSampledColors)",
+                "nonBackground=\(metrics.nonBackgroundSampleCount)"
+            ].joined(separator: "\t")
+        )
+    }
+
     private static func printUsage() {
         print(
             """
             Usage:
               swift run block-preview list
               swift run block-preview all [--output .build/block-previews]
+              swift run block-preview surface [--output .build/block-previews]
               swift run block-preview <block-id> [--fixture name] [--size 420x520] [--output dir]
 
             Examples:
-              swift run block-preview quicksave --fixture notes-and-captures --size 640x360
+              swift run block-preview surface
+              swift run block-preview quicksave --fixture notes-and-captures
               swift run block-preview copyhistory --fixture mixed-clipboard
               swift run block-preview codexlog --fixture active-thread
             """

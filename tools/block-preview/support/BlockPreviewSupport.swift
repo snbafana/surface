@@ -27,6 +27,11 @@ public struct BlockPreviewResult: Sendable {
     public var metrics: BlockPreviewMetrics
 }
 
+public struct SurfacePreviewResult: Sendable {
+    public var url: URL
+    public var metrics: BlockPreviewMetrics
+}
+
 public struct BlockPreviewMetrics: Sendable {
     public var width: Int
     public var height: Int
@@ -41,14 +46,31 @@ public struct BlockPreviewMetrics: Sendable {
 
 public enum BlockPreview {
     public static let defaultOutputDirectory = URL(fileURLWithPath: ".build/block-previews", isDirectory: true)
-    public static let cases: [BlockPreviewCase] = [
-        BlockPreviewCase(blockID: "quicksave", fixture: "empty", size: CGSize(width: 640, height: 360)),
-        BlockPreviewCase(blockID: "quicksave", fixture: "notes-and-captures", size: CGSize(width: 640, height: 360)),
-        BlockPreviewCase(blockID: "copyhistory", fixture: "empty", size: CGSize(width: 420, height: 420)),
-        BlockPreviewCase(blockID: "copyhistory", fixture: "mixed-clipboard", size: CGSize(width: 420, height: 420)),
-        BlockPreviewCase(blockID: "codexlog", fixture: "empty", size: CGSize(width: 520, height: 360)),
-        BlockPreviewCase(blockID: "codexlog", fixture: "active-thread", size: CGSize(width: 520, height: 360))
+    private static let caseFixtures: [(BlockID, [String])] = [
+        ("quicksave", ["empty", "notes-and-captures"]),
+        ("copyhistory", ["empty", "mixed-clipboard"]),
+        ("codexlog", ["empty", "active-thread"])
     ]
+
+    private static let surfaceFixtures: [BlockID: String] = [
+        "quicksave": "notes-and-captures",
+        "copyhistory": "mixed-clipboard",
+        "codexlog": "active-thread"
+    ]
+
+    public static let cases: [BlockPreviewCase] = caseFixtures.flatMap { blockID, fixtures in
+        fixtures.map { fixture in
+            BlockPreviewCase(blockID: blockID, fixture: fixture, size: defaultSize(for: blockID))
+        }
+    }
+
+    public static func defaultSize(for blockID: BlockID, in container: CGSize = SurfaceLayout.previewCanvasSize) -> CGSize {
+        SurfaceLayout.defaultRect(for: blockID, in: container)?.size ?? CGSize(width: 420, height: 420)
+    }
+
+    public static func liveCanvasSize() -> CGSize {
+        NSScreen.main?.visibleFrame.size ?? SurfaceLayout.previewCanvasSize
+    }
 
     @MainActor
     public static func render(
@@ -101,6 +123,92 @@ public enum BlockPreview {
             )
         }
     }
+
+    @MainActor
+    public static func renderSurface(
+        size: CGSize = liveCanvasSize(),
+        outputDirectory: URL = defaultOutputDirectory
+    ) throws -> SurfacePreviewResult {
+        try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+        let url = outputDirectory.appendingPathComponent("surface-active.png")
+        var runtimes: [any BlockRuntime] = []
+        defer {
+            for runtime in runtimes {
+                runtime.stop()
+            }
+        }
+
+        let blocks = try SurfaceLayout.defaultLayout.blocks.compactMap { instance -> SurfacePreviewBlock? in
+            guard instance.enabled,
+                  let block = Blocks.registry.block(for: instance.id) else {
+                return nil
+            }
+
+            let fixture = surfaceFixtures[instance.id] ?? "empty"
+            let fixtureContext = try BlockPreviewFixture.make(blockID: instance.id, fixture: fixture)
+            let runtime = block.makeRuntime(
+                Block.Context(
+                    storageDirectory: fixtureContext.storageDirectory,
+                    now: fixtureContext.now
+                )
+            )
+            runtime.start()
+            runtimes.append(runtime)
+
+            return SurfacePreviewBlock(
+                id: instance.id,
+                title: block.title,
+                rect: SurfaceLayout.rect(for: instance.frame, grid: SurfaceLayout.defaultLayout.grid, in: size),
+                content: runtime.makeView()
+            )
+        }
+
+        let view = SurfacePreviewCanvas(blocks: blocks, size: size)
+        let data = try BlockImageRenderer.pngData(
+            for: AnyView(view),
+            size: size
+        )
+        try data.write(to: url, options: [.atomic])
+
+        return SurfacePreviewResult(
+            url: url,
+            metrics: try BlockPreviewMetricsReader.metrics(forPNG: url)
+        )
+    }
+}
+
+private struct SurfacePreviewBlock: Identifiable {
+    var id: BlockID
+    var title: String
+    var rect: CGRect
+    var content: AnyView
+}
+
+private struct SurfacePreviewCanvas: View {
+    var blocks: [SurfacePreviewBlock]
+    var size: CGSize
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Style.previewBackground
+                .ignoresSafeArea()
+
+            ForEach(blocks) { block in
+                BlockChrome(title: block.title) {
+                    block.content
+                }
+                .frame(width: block.rect.width, height: block.rect.height, alignment: .topLeading)
+                .shadow(color: .black.opacity(0.08), radius: 10, y: 4)
+                .offset(x: block.rect.minX, y: block.rect.minY)
+            }
+        }
+        .frame(
+            width: size.width,
+            height: size.height,
+            alignment: .topLeading
+        )
+        .background(Style.previewBackground)
+    }
 }
 
 enum BlockPreviewFixture {
@@ -122,8 +230,10 @@ enum BlockPreviewFixture {
             try makeQuicksaveFixture(in: directory)
         case ("copyhistory", "empty"), ("copyhistory", "mixed-clipboard"):
             break
-        case ("codexlog", "empty"), ("codexlog", "active-thread"):
+        case ("codexlog", "empty"):
             break
+        case ("codexlog", "active-thread"):
+            try makeCodexLogFixture(in: directory)
         default:
             throw BlockPreviewError.unknownFixture("\(blockID.rawValue)/\(fixture)")
         }
@@ -142,6 +252,63 @@ enum BlockPreviewFixture {
 
         for url in [capture, note, standalone] {
             try FileManager.default.setAttributes([.modificationDate: fixedNow], ofItemAtPath: url.path)
+        }
+    }
+
+    private static func makeCodexLogFixture(in directory: URL) throws {
+        let nowSeconds = Int(Date().timeIntervalSince1970)
+        let nowMilliseconds = nowSeconds * 1_000
+
+        try [
+            #"{"id":"thread-review","thread_name":"Review generated AGENTS.md change","updated_at":"\#(nowMilliseconds)"}"#,
+            #"{"id":"thread-notes","thread_name":"Daily note idea extraction","updated_at":"\#(nowMilliseconds - 20_000)"}"#,
+            #"{"id":"thread-quiet","thread_name":"Finished background thread","updated_at":"\#(nowMilliseconds - 120_000)"}"#
+        ]
+        .joined(separator: "\n")
+        .write(
+            to: directory.appendingPathComponent("session_index.jsonl"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let logsDatabase = directory.appendingPathComponent("logs_2.sqlite")
+        try runSQLite(
+            database: logsDatabase,
+            statements: """
+            create table logs(thread_id text, ts integer);
+            insert into logs(thread_id, ts) values
+                ('thread-review', \(nowSeconds - 20)),
+                ('thread-review', \(nowSeconds - 10)),
+                ('thread-notes', \(nowSeconds - 80));
+            """
+        )
+
+        try [
+            #"{"id":"daily-codex-guidance-review-001","title":"Apply AGENTS.md wording update","detail":{"target_path":"/Users/snbafana/Documents/personal/Scratch/projects/surface/AGENTS.md","proposed_text":"- When the user says they reverted or requests just push this, stop analysis and refactors immediately. Confirm branch and remote, then run only the minimal commands needed to push the current state.\n- Keep preview rendering on the real BlockRuntime path."},"status":"pending","thread_id":"thread-review","automation_id":"daily-codex-guidance-review","created_at":\#(nowMilliseconds - 30_000)}"#,
+            #"{"id":"daily-obsidian-backlink-proposals-001","title":"Add Related links","detail":{"source_note_path":"Inbox/How to Understand ML Papers Quickly.md","current_related":["[[Machine Learning Trends]]"],"proposed_links":[{"link":"[[Machine Learning Trends]]"},{"link":"[[Deep Learning]]"},{"link":"[[MIT Deep Learning]]"}]},"status":"pending","thread_id":"thread-notes","automation_id":"daily-obsidian-backlink-proposals","created_at":\#(nowMilliseconds - 50_000)}"#,
+            #"{"id":"daily-note-to-genuine-ideas-001","title":"Add Genuine Ideas candidates","detail":{"target_path":"Future Lists/Genuine Ideas List.md","addition_text":"- Local approval queues for long-running agents.\n- A checklist for reading ML papers quickly."},"status":"pending","thread_id":"thread-notes","automation_id":"daily-note-to-genuine-ideas","created_at":\#(nowMilliseconds - 40_000)}"#
+        ]
+        .joined(separator: "\n")
+        .write(
+            to: directory.appendingPathComponent("codexlog-actions.jsonl"),
+            atomically: true,
+            encoding: .utf8
+        )
+    }
+
+    private static func runSQLite(database: URL, statements: String) throws {
+        let process = Process()
+        let errorPipe = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+        process.arguments = [database.path, statements]
+        process.standardOutput = Pipe()
+        process.standardError = errorPipe
+        try process.run()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+            let error = String(data: errorData, encoding: .utf8) ?? "unknown sqlite3 error"
+            throw BlockPreviewError.renderFailed(error)
         }
     }
 }

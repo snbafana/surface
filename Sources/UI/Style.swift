@@ -1,13 +1,14 @@
+import AppKit
 import SwiftUI
 
 public enum Style {
-    public static let previewBackground = Color(red: 0.08, green: 0.10, blue: 0.12)
-    public static let cardBackground = Color(red: 0.07, green: 0.10, blue: 0.12).opacity(0.90)
-    public static let panelBackground = Color(red: 0.06, green: 0.08, blue: 0.10).opacity(0.92)
-    public static let primaryText = Color.white
-    public static let secondaryText = Color.white.opacity(0.72)
-    public static let border = Color.white.opacity(0.18)
-    public static let activeBorder = Color.white.opacity(0.34)
+    public static let previewBackground = Color(nsColor: .windowBackgroundColor)
+    public static let cardMaterial = Material.ultraThinMaterial
+    public static let panelMaterial = Material.ultraThinMaterial
+    public static let primaryText = Color.primary
+    public static let secondaryText = Color.secondary
+    public static let border = Color.primary.opacity(0.14)
+    public static let activeBorder = Color.accentColor.opacity(0.45)
 }
 
 public struct BlockChrome<Content: View>: View {
@@ -47,7 +48,7 @@ public struct BlockChrome<Content: View>: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Style.cardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .background(Style.cardMaterial, in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(isActive ? Style.activeBorder : Style.border, lineWidth: 1)

@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 public struct GridPoint: Hashable, Codable, Sendable {
@@ -132,5 +133,41 @@ public extension GridFrame {
             origin.x + size.width > other.origin.x &&
             origin.y < other.origin.y + other.size.height &&
             origin.y + size.height > other.origin.y
+    }
+}
+
+public enum SurfaceLayout {
+    public static let cardGap: CGFloat = 8
+    public static let previewCanvasSize = CGSize(width: 1440, height: 900)
+
+    public static let defaultLayout = Layout(grid: Grid(columns: 24, rows: 16), blocks: [
+        Block.Instance(id: "quicksave", frame: GridFrame(x: 1, y: 1, width: 10, height: 5)),
+        Block.Instance(id: "copyhistory", frame: GridFrame(x: 12, y: 1, width: 8, height: 8)),
+        Block.Instance(id: "codexlog", frame: GridFrame(x: 15, y: 9, width: 8, height: 7))
+    ])
+
+    public static func workspace(registry: BlockRegistry) throws -> Workspace {
+        try Workspace(blocks: registry.blocks, layout: defaultLayout)
+    }
+
+    public static func rect(for frame: GridFrame, grid: Grid, in container: CGSize) -> CGRect {
+        let cellWidth = container.width / CGFloat(grid.columns)
+        let cellHeight = container.height / CGFloat(grid.rows)
+        return CGRect(
+            x: CGFloat(frame.origin.x) * cellWidth + cardGap / 2,
+            y: CGFloat(frame.origin.y) * cellHeight + cardGap / 2,
+            width: CGFloat(frame.size.width) * cellWidth - cardGap,
+            height: CGFloat(frame.size.height) * cellHeight - cardGap
+        )
+    }
+
+    public static func rect(for instance: Block.Instance, in container: CGSize) -> CGRect {
+        rect(for: instance.frame, grid: defaultLayout.grid, in: container)
+    }
+
+    public static func defaultRect(for blockID: BlockID, in container: CGSize = previewCanvasSize) -> CGRect? {
+        defaultLayout.blocks
+            .first { $0.id == blockID }
+            .map { rect(for: $0, in: container) }
     }
 }

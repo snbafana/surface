@@ -2,6 +2,9 @@ import Foundation
 
 struct QuicksaveSettings {
     private static let inboxPathKey = "inboxPath"
+    private static let obsidianVaultPathKey = "obsidianVaultPath"
+    private static let obsidianDailyNotesPathKey = "obsidianDailyNotesPath"
+    private static let obsidianDailyTemplatePathKey = "obsidianDailyTemplatePath"
 
     static func sharedDefaults() -> UserDefaults {
         UserDefaults(suiteName: "com.snbafana.quicksave") ?? .standard
@@ -12,18 +15,42 @@ struct QuicksaveSettings {
     }
 
     static func inboxURL(defaults: UserDefaults = QuicksaveSettings.sharedDefaults()) -> URL {
-        storedURL(forKey: inboxPathKey, defaultURL: defaultInboxURL(), defaults: defaults)
+        storedURL(forKey: inboxPathKey, defaultURL: defaultInboxURL(), isDirectory: true, defaults: defaults)
     }
 
     static func setInboxURL(_ url: URL, defaults: UserDefaults = QuicksaveSettings.sharedDefaults()) {
         defaults.set(url.path, forKey: inboxPathKey)
     }
 
-    private static func storedURL(forKey key: String, defaultURL: URL, defaults: UserDefaults) -> URL {
+    static func obsidianVaultURL(defaults: UserDefaults = QuicksaveSettings.sharedDefaults()) -> URL {
+        storedURL(forKey: obsidianVaultPathKey, defaultURL: ObsidianDailyNotes.defaultVaultURL(), isDirectory: true, defaults: defaults)
+    }
+
+    static func setObsidianVaultURL(_ url: URL, defaults: UserDefaults = QuicksaveSettings.sharedDefaults()) {
+        defaults.set(url.path, forKey: obsidianVaultPathKey)
+    }
+
+    static func obsidianDailyNotesURL(defaults: UserDefaults = QuicksaveSettings.sharedDefaults()) -> URL {
+        storedURL(forKey: obsidianDailyNotesPathKey, defaultURL: ObsidianDailyNotes.defaultDailyNotesURL(), isDirectory: true, defaults: defaults)
+    }
+
+    static func setObsidianDailyNotesURL(_ url: URL, defaults: UserDefaults = QuicksaveSettings.sharedDefaults()) {
+        defaults.set(url.path, forKey: obsidianDailyNotesPathKey)
+    }
+
+    static func obsidianDailyTemplateURL(defaults: UserDefaults = QuicksaveSettings.sharedDefaults()) -> URL {
+        storedURL(forKey: obsidianDailyTemplatePathKey, defaultURL: ObsidianDailyNotes.defaultDailyTemplateURL(), isDirectory: false, defaults: defaults)
+    }
+
+    static func setObsidianDailyTemplateURL(_ url: URL, defaults: UserDefaults = QuicksaveSettings.sharedDefaults()) {
+        defaults.set(url.path, forKey: obsidianDailyTemplatePathKey)
+    }
+
+    private static func storedURL(forKey key: String, defaultURL: URL, isDirectory: Bool, defaults: UserDefaults) -> URL {
         guard let path = defaults.string(forKey: key), !path.isEmpty else {
             return defaultURL
         }
-        return URL(fileURLWithPath: NSString(string: path).expandingTildeInPath, isDirectory: true)
+        return URL(fileURLWithPath: NSString(string: path).expandingTildeInPath, isDirectory: isDirectory)
     }
 }
 

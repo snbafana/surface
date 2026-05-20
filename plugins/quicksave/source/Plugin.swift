@@ -66,7 +66,17 @@ final class Runtime: ObservableObject, BlockRuntime {
         do {
             let result = try capture.captureClipboard(to: inboxURL)
             lastCaptureURLs = result.savedURLs
-            status = statusText(for: result)
+            let captureStatus = statusText(for: result)
+            if shouldAppendToObsidian {
+                do {
+                    try appendCapturesToObsidian(result.savedURLs)
+                    status = "\(captureStatus) + Obsidian"
+                } catch {
+                    status = "\(captureStatus); Obsidian error"
+                }
+            } else {
+                status = captureStatus
+            }
             reloadNotes()
         } catch {
             status = error.localizedDescription
@@ -78,9 +88,24 @@ final class Runtime: ObservableObject, BlockRuntime {
         do {
             let now = context.now ?? Date()
             _ = try noteWriter.save(note: noteText, for: targets, in: inboxURL, now: now)
+            var obsidianError = false
+            if shouldAppendToObsidian {
+                do {
+                    try appendNoteToObsidian(noteText, targets: targets, now: now)
+                } catch {
+                    obsidianError = true
+                }
+            }
             noteText = ""
             lastSavedAt = now
-            status = targets.isEmpty ? "Saved note" : "Saved note with capture"
+            let savedStatus = targets.isEmpty ? "Saved note" : "Saved note with capture"
+            if obsidianError {
+                status = "\(savedStatus); Obsidian error"
+            } else if shouldAppendToObsidian {
+                status = "\(savedStatus) + Obsidian"
+            } else {
+                status = savedStatus
+            }
             reloadNotes()
         } catch {
             status = error.localizedDescription
@@ -138,6 +163,44 @@ final class Runtime: ObservableObject, BlockRuntime {
 
     private var inboxURL: URL {
         context.storageDirectory ?? QuicksaveSettings.inboxURL()
+    }
+
+    private var shouldAppendToObsidian: Bool {
+        context.storageDirectory == nil
+    }
+
+    private func appendCapturesToObsidian(_ captureURLs: [URL]) throws {
+        guard !captureURLs.isEmpty else {
+            throw ObsidianAppendError.noCapture
+        }
+
+        let writer = obsidianDailyNotes()
+        let now = context.now ?? Date()
+        for captureURL in captureURLs {
+            let note = try ContextNoteWriter.noteText(for: captureURL)
+            _ = try writer.append(captureURL: captureURL, note: note, date: now)
+        }
+    }
+
+    private func appendNoteToObsidian(_ note: String, targets: [URL], now: Date) throws {
+        let writer = obsidianDailyNotes()
+        if targets.isEmpty {
+            _ = try writer.append(note: note, date: now)
+        } else {
+            _ = try writer.appendNotes(for: targets, note: note, date: now)
+            lastCaptureURLs = targets
+        }
+    }
+
+    private func obsidianDailyNotes() -> ObsidianDailyNotes {
+        ObsidianDailyNotes(
+            dailyNotesDirectory: QuicksaveSettings.obsidianDailyNotesURL(),
+            vaultDirectory: QuicksaveSettings.obsidianVaultURL(),
+            resolveDailyNote: ObsidianDailyNotes.obsidianTemplateDailyNoteResolver(
+                vaultURL: QuicksaveSettings.obsidianVaultURL(),
+                templateURL: QuicksaveSettings.obsidianDailyTemplateURL()
+            )
+        )
     }
 
     private func statusText(for result: CaptureResult) -> String {
@@ -390,22 +453,22 @@ private enum QuickCaptureStyle {
     static let bodyFont = Font.system(size: 13)
     static let noteFont = Font.system(size: 12)
 
-    static let primaryText = Color.white.opacity(0.90)
-    static let secondaryText = Color.white.opacity(0.66)
-    static let mutedText = Color.white.opacity(0.46)
-    static let subtleText = Color.white.opacity(0.38)
-    static let disabledText = Color.white.opacity(0.35)
-    static let primaryIcon = Color.white.opacity(0.82)
+    static let primaryText = Color.primary
+    static let secondaryText = Color.secondary
+    static let mutedText = Color.secondary.opacity(0.75)
+    static let subtleText = Color.secondary.opacity(0.55)
+    static let disabledText = Color.secondary.opacity(0.45)
+    static let primaryIcon = Color.primary
 
-    static let softFill = Color.white.opacity(0.055)
-    static let inputFill = Color.white.opacity(0.075)
-    static let buttonFill = Color.white.opacity(0.08)
-    static let rowFill = Color.white.opacity(0.065)
-    static let emptyFill = Color.white.opacity(0.045)
-    static let activeFill = Color.white.opacity(0.18)
-    static let disabledFill = Color.white.opacity(0.07)
-    static let inputStroke = Color.white.opacity(0.10)
-    static let rowStroke = Color.white.opacity(0.07)
+    static let softFill = Color.primary.opacity(0.06)
+    static let inputFill = Color.primary.opacity(0.055)
+    static let buttonFill = Color.primary.opacity(0.08)
+    static let rowFill = Color.primary.opacity(0.06)
+    static let emptyFill = Color.primary.opacity(0.045)
+    static let activeFill = Color.accentColor.opacity(0.22)
+    static let disabledFill = Color.primary.opacity(0.055)
+    static let inputStroke = Color.primary.opacity(0.14)
+    static let rowStroke = Color.primary.opacity(0.08)
 }
 
 private extension View {

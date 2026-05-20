@@ -21,6 +21,23 @@ struct BlockPreviewTests {
         }
     }
 
+    @MainActor
+    @Test func rendersWholeSurfacePreview() throws {
+        let outputDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("surface-block-preview-tests", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+
+        let result = try BlockPreview.renderSurface(
+            size: CGSize(width: 1440, height: 900),
+            outputDirectory: outputDirectory
+        )
+
+        #expect(FileManager.default.fileExists(atPath: result.url.path))
+        #expect(result.metrics.width >= 1440)
+        #expect(result.metrics.height >= 900)
+        #expect(result.metrics.isVisuallyNonBlank)
+    }
+
     @Test func previewCasesCoverEveryCurrentPlugin() {
         let covered = Set(BlockPreview.cases.map(\.blockID.rawValue))
 

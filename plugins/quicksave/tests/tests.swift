@@ -102,6 +102,63 @@ struct QuicksaveTests {
         #expect(notes.first?.captureURL?.resolvingSymlinksInPath() == imageURL.resolvingSymlinksInPath())
         #expect(notes.first?.captureKind == "image")
     }
+
+    @Test func appendsTextCaptureToObsidianDailyNote() throws {
+        let fixture = try QuicksaveFixture()
+        let captureURL = fixture.inboxURL.appendingPathComponent("capture.txt")
+        try "first line\nsecond line".write(to: captureURL, atomically: true, encoding: .utf8)
+
+        let dailyNote = try fixture.obsidian.append(captureURL: captureURL, note: "why this mattered", date: fixture.date)
+        let contents = try String(contentsOf: dailyNote, encoding: .utf8)
+
+        #expect(dailyNote.lastPathComponent == "05-09-2026.md")
+        #expect(contents.contains("# 05-09-2026"))
+        #expect(contents.contains("> first line\n  > second line"))
+        #expect(contents.contains("  - why this mattered"))
+    }
+
+    @Test func appendsStandaloneNoteToObsidianDailyNote() throws {
+        let fixture = try QuicksaveFixture()
+
+        let dailyNote = try fixture.obsidian.append(note: "standalone block note", date: fixture.date)
+        let contents = try String(contentsOf: dailyNote, encoding: .utf8)
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "h:mm a"
+
+        #expect(contents.contains("- \(formatter.string(from: fixture.date))"))
+        #expect(contents.contains("  - standalone block note"))
+    }
+
+    @Test func appendsNoteToExistingObsidianCaptureEntry() throws {
+        let fixture = try QuicksaveFixture()
+        let captureURL = fixture.inboxURL.appendingPathComponent("capture.txt")
+        try "saved once".write(to: captureURL, atomically: true, encoding: .utf8)
+
+        _ = try fixture.obsidian.append(captureURL: captureURL, date: fixture.date)
+        let dailyNote = try fixture.obsidian.appendNotes(for: [captureURL], note: "capture context", date: fixture.date)
+        let contents = try String(contentsOf: dailyNote, encoding: .utf8)
+
+        #expect(contents.contains("> saved once\n  - capture context"))
+        #expect(contents.components(separatedBy: "saved once").count == 2)
+    }
+
+    @Test func storesObsidianSettings() throws {
+        let suiteName = "surface-quicksave-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let root = URL(fileURLWithPath: "/tmp/QuicksaveVault", isDirectory: true)
+        let dailyNotes = root.appendingPathComponent("Daily", isDirectory: true)
+        let template = root.appendingPathComponent("Templates/Daily Note.md", isDirectory: false)
+
+        QuicksaveSettings.setObsidianVaultURL(root, defaults: defaults)
+        QuicksaveSettings.setObsidianDailyNotesURL(dailyNotes, defaults: defaults)
+        QuicksaveSettings.setObsidianDailyTemplateURL(template, defaults: defaults)
+
+        #expect(QuicksaveSettings.obsidianVaultURL(defaults: defaults).path == root.path)
+        #expect(QuicksaveSettings.obsidianDailyNotesURL(defaults: defaults).path == dailyNotes.path)
+        #expect(QuicksaveSettings.obsidianDailyTemplateURL(defaults: defaults).path == template.path)
+    }
 }
 
 @MainActor
@@ -127,12 +184,31 @@ private final class RecordingShortcuts: KeyboardShortcutRegistrar {
 private struct QuicksaveFixture {
     let rootURL: URL
     let inboxURL: URL
+    let dailyNotesURL: URL
+    let obsidian: ObsidianDailyNotes
+    let date: Date
 
     init() throws {
         rootURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("surface-quicksave-tests", isDirectory: true)
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         inboxURL = rootURL.appendingPathComponent("inbox", isDirectory: true)
+        dailyNotesURL = rootURL.appendingPathComponent("Zettelkatsen", isDirectory: true)
+        var components = DateComponents()
+        components.calendar = Calendar(identifier: .gregorian)
+        components.timeZone = TimeZone(secondsFromGMT: 0)
+        components.year = 2026
+        components.month = 5
+        components.day = 9
+        components.hour = 12
+        components.minute = 30
+        date = try #require(components.date)
+        obsidian = ObsidianDailyNotes(
+            dailyNotesDirectory: dailyNotesURL,
+            vaultDirectory: rootURL,
+            resolveDailyNote: ObsidianDailyNotes.fileSystemDailyNoteResolver()
+        )
         try FileManager.default.createDirectory(at: inboxURL, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: dailyNotesURL, withIntermediateDirectories: true)
     }
 }

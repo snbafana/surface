@@ -137,6 +137,38 @@ struct CodexLogTests {
         #expect(snapshot.resolvedActions.map(\.status) == [.cancelled])
         #expect(try String(contentsOf: fixture.actionLogURL, encoding: .utf8).split(separator: "\n").count == 4)
     }
+
+    @Test func structuredRowsSplitIntoBiteSizedActions() throws {
+        let fixture = try CodexLogFixture()
+        try fixture.writeActions([
+            #"{"id":"codex-bundle","status":"pending","title":"Update guidance","detail":{"target_path":"/tmp/AGENTS.md","proposed_text":"- First guardrail\n- Second guardrail"},"automation_id":"daily-codex-guidance-review","created_at":"2026-05-20T01:36:54Z"}"#,
+            #"{"id":"backlink-bundle","status":"pending","title":"Add related links","detail":{"source_note_path":"Inbox/ML.md","current_related":["[[Existing]]"],"proposed_links":[{"link":"[[Existing]]"},{"link":"[[Deep Learning]]"},{"link":"[[Machine Learning Trends]]"}]},"automation_id":"daily-obsidian-backlink-proposals","created_at":"2026-05-20T01:34:13Z"}"#,
+            #"{"id":"idea-bundle","status":"pending","title":"Add ideas","detail":{"target_path":"Future Lists/Genuine Ideas List.md","addition_text":"- First idea\n- Second idea with \'taste\'"},"automation_id":"daily-note-to-genuine-ideas","created_at":"2026-05-20T01:33:01Z"}"#
+        ])
+
+        let reader = CodexStateReader(codexHome: fixture.rootURL) { _ in "" }
+        let snapshot = reader.snapshot()
+
+        let codexActions = snapshot.pendingActions.filter { $0.automationID == "daily-codex-guidance-review" }
+        let backlinkActions = snapshot.pendingActions.filter { $0.automationID == "daily-obsidian-backlink-proposals" }
+        let ideaActions = snapshot.pendingActions.filter { $0.automationID == "daily-note-to-genuine-ideas" }
+
+        #expect(codexActions.count == 2)
+        #expect(codexActions.allSatisfy { $0.targetPath == "/tmp/AGENTS.md" })
+        #expect(codexActions.contains { $0.detail == "First guardrail" })
+        #expect(backlinkActions.count == 2)
+        #expect(backlinkActions.allSatisfy { $0.targetPath == "Inbox/ML.md" })
+        #expect(backlinkActions.contains { $0.title.contains("[[Deep Learning]]") })
+        #expect(ideaActions.count == 2)
+        #expect(ideaActions.contains { $0.detail == "Second idea with 'taste'" })
+        #expect(snapshot.pendingActions.allSatisfy { $0.createdAt != nil })
+
+        let action = try #require(codexActions.first)
+        try reader.approveAction(action)
+        let log = try String(contentsOf: fixture.actionLogURL, encoding: .utf8)
+        #expect(log.contains(#""target_path":"/tmp/AGENTS.md""#))
+        #expect(log.contains(#""text":"#))
+    }
 }
 
 private struct CodexLogFixture {
