@@ -15,6 +15,7 @@ final class Surface: ObservableObject {
     let runningBlocks: RunningBlocks
 
     private weak var panel: SurfacePanel?
+    private var lastShortcutToggleAt: Date?
 
     init(blocks: BlockRegistry = Blocks.registry) {
         let keyboardShortcuts = KeyboardShortcuts()
@@ -35,6 +36,14 @@ final class Surface: ObservableObject {
 
     func toggle() {
         isVisible ? hide() : show()
+    }
+
+    func toggleFromShortcut(now: Date = Date()) {
+        if let lastShortcutToggleAt, now.timeIntervalSince(lastShortcutToggleAt) < 0.2 {
+            return
+        }
+        lastShortcutToggleAt = now
+        toggle()
     }
 
     func show() {

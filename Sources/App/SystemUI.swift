@@ -133,10 +133,15 @@ final class StatusIcon: NSObject, NSMenuDelegate {
 }
 
 final class KeyboardShortcuts: KeyboardShortcutRegistrar {
+    private struct Registration {
+        var shortcut: KeyboardShortcut
+        var action: @MainActor @Sendable () -> Void
+    }
+
     private var handlerRef: EventHandlerRef?
     private var nextID: UInt32 = 1
     private var hotKeyRefs: [KeyboardShortcutToken: EventHotKeyRef] = [:]
-    private var actions: [KeyboardShortcutToken: @MainActor @Sendable () -> Void] = [:]
+    private var registrations: [KeyboardShortcutToken: Registration] = [:]
 
     @MainActor
     @discardableResult
@@ -144,27 +149,18 @@ final class KeyboardShortcuts: KeyboardShortcutRegistrar {
         _ shortcut: KeyboardShortcut,
         action: @escaping @MainActor @Sendable () -> Void
     ) -> KeyboardShortcutToken? {
-        installHandlerIfNeeded()
+        guard installHandlerIfNeeded() else {
+            return nil
+        }
 
         let token = KeyboardShortcutToken(rawValue: nextID)
         nextID += 1
-        let hotKeyID = EventHotKeyID(signature: OSType("SURF".fourCharCode), id: token.rawValue)
-        var hotKeyRef: EventHotKeyRef?
-        let status = RegisterEventHotKey(
-            shortcut.keyCode,
-            shortcut.modifiers,
-            hotKeyID,
-            GetApplicationEventTarget(),
-            0,
-            &hotKeyRef
-        )
-
-        guard status == noErr, let hotKeyRef else {
+        guard let hotKeyRef = registerSystemHotKey(shortcut, token: token) else {
             return nil
         }
 
         hotKeyRefs[token] = hotKeyRef
-        actions[token] = action
+        registrations[token] = Registration(shortcut: shortcut, action: action)
         return token
     }
 
@@ -173,13 +169,31 @@ final class KeyboardShortcuts: KeyboardShortcutRegistrar {
         if let hotKeyRef = hotKeyRefs.removeValue(forKey: token) {
             UnregisterEventHotKey(hotKeyRef)
         }
-        actions[token] = nil
+        registrations[token] = nil
     }
 
     @MainActor
     func unregisterAll() {
-        for token in Array(hotKeyRefs.keys) {
-            unregisterKeyboardShortcut(token)
+        unregisterSystemHotKeys()
+        registrations.removeAll()
+    }
+
+    @MainActor
+    func reconnectRegisteredShortcuts() {
+        unregisterSystemHotKeys()
+        if let handlerRef {
+            RemoveEventHandler(handlerRef)
+            self.handlerRef = nil
+        }
+
+        guard installHandlerIfNeeded() else {
+            return
+        }
+
+        for (token, registration) in registrations {
+            if let hotKeyRef = registerSystemHotKey(registration.shortcut, token: token) {
+                hotKeyRefs[token] = hotKeyRef
+            }
         }
     }
 
@@ -193,9 +207,39 @@ final class KeyboardShortcuts: KeyboardShortcutRegistrar {
     }
 
     @MainActor
-    private func installHandlerIfNeeded() {
+    private func unregisterSystemHotKeys() {
+        for hotKeyRef in hotKeyRefs.values {
+            UnregisterEventHotKey(hotKeyRef)
+        }
+        hotKeyRefs.removeAll()
+    }
+
+    @MainActor
+    private func registerSystemHotKey(
+        _ shortcut: KeyboardShortcut,
+        token: KeyboardShortcutToken
+    ) -> EventHotKeyRef? {
+        let hotKeyID = EventHotKeyID(signature: OSType("SURF".fourCharCode), id: token.rawValue)
+        var hotKeyRef: EventHotKeyRef?
+        let status = RegisterEventHotKey(
+            shortcut.keyCode,
+            shortcut.modifiers,
+            hotKeyID,
+            GetApplicationEventTarget(),
+            0,
+            &hotKeyRef
+        )
+
+        guard status == noErr else {
+            return nil
+        }
+        return hotKeyRef
+    }
+
+    @MainActor
+    private func installHandlerIfNeeded() -> Bool {
         guard handlerRef == nil else {
-            return
+            return true
         }
 
         var eventType = EventTypeSpec(
@@ -203,7 +247,7 @@ final class KeyboardShortcuts: KeyboardShortcutRegistrar {
             eventKind: UInt32(kEventHotKeyPressed)
         )
         let selfPointer = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
-        InstallEventHandler(
+        let status = InstallEventHandler(
             GetApplicationEventTarget(),
             { _, event, userData in
                 guard let event, let userData else { return noErr }
@@ -236,11 +280,12 @@ final class KeyboardShortcuts: KeyboardShortcutRegistrar {
             selfPointer,
             &handlerRef
         )
+        return status == noErr
     }
 
     @MainActor
     private func performShortcut(_ token: KeyboardShortcutToken) {
-        actions[token]?()
+        registrations[token]?.action()
     }
 }
 
