@@ -3,6 +3,8 @@ import Carbon
 import Core
 
 final class SurfacePanel: NSPanel {
+    var onEscape: (() -> Void)?
+
     init() {
         let frame = Self.targetFrameForDisplay()
         super.init(
@@ -16,6 +18,14 @@ final class SurfacePanel: NSPanel {
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == UInt16(kVK_Escape) {
+            onEscape?()
+            return
+        }
+        super.keyDown(with: event)
+    }
 
     func prepareForDisplay() {
         let targetFrame = Self.targetFrameForDisplay()
@@ -149,13 +159,10 @@ final class KeyboardShortcuts: KeyboardShortcutRegistrar {
         _ shortcut: KeyboardShortcut,
         action: @escaping @MainActor @Sendable () -> Void
     ) -> KeyboardShortcutToken? {
-        guard installHandlerIfNeeded() else {
-            return nil
-        }
-
         let token = KeyboardShortcutToken(rawValue: nextID)
         nextID += 1
-        guard let hotKeyRef = registerSystemHotKey(shortcut, token: token) else {
+
+        guard installHandlerIfNeeded(), let hotKeyRef = registerSystemHotKey(shortcut, token: token) else {
             return nil
         }
 

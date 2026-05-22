@@ -18,27 +18,66 @@ public struct Block: Identifiable, Sendable {
         public weak var keyboardShortcuts: (any KeyboardShortcutRegistrar)?
         public var storageDirectory: URL?
         public var now: Date?
+        public var allowsLiveProcesses: Bool
+        public var allowsExternalWrites: Bool
 
         public init() {
-            self.init(keyboardShortcuts: nil, storageDirectory: nil, now: nil)
+            self.init(
+                keyboardShortcuts: nil,
+                storageDirectory: nil,
+                now: nil,
+                allowsLiveProcesses: true,
+                allowsExternalWrites: true
+            )
         }
 
         public init(keyboardShortcuts: (any KeyboardShortcutRegistrar)?) {
-            self.init(keyboardShortcuts: keyboardShortcuts, storageDirectory: nil, now: nil)
+            self.init(
+                keyboardShortcuts: keyboardShortcuts,
+                storageDirectory: nil,
+                now: nil,
+                allowsLiveProcesses: true,
+                allowsExternalWrites: true
+            )
         }
 
         public init(storageDirectory: URL?, now: Date?) {
-            self.init(keyboardShortcuts: nil, storageDirectory: storageDirectory, now: now)
+            self.init(
+                keyboardShortcuts: nil,
+                storageDirectory: storageDirectory,
+                now: now,
+                allowsLiveProcesses: storageDirectory == nil,
+                allowsExternalWrites: storageDirectory == nil
+            )
+        }
+
+        public init(
+            storageDirectory: URL?,
+            now: Date?,
+            allowsLiveProcesses: Bool,
+            allowsExternalWrites: Bool
+        ) {
+            self.init(
+                keyboardShortcuts: nil,
+                storageDirectory: storageDirectory,
+                now: now,
+                allowsLiveProcesses: allowsLiveProcesses,
+                allowsExternalWrites: allowsExternalWrites
+            )
         }
 
         public init(
             keyboardShortcuts: (any KeyboardShortcutRegistrar)?,
             storageDirectory: URL?,
-            now: Date?
+            now: Date?,
+            allowsLiveProcesses: Bool = true,
+            allowsExternalWrites: Bool = true
         ) {
             self.keyboardShortcuts = keyboardShortcuts
             self.storageDirectory = storageDirectory
             self.now = now
+            self.allowsLiveProcesses = allowsLiveProcesses
+            self.allowsExternalWrites = allowsExternalWrites
         }
     }
 

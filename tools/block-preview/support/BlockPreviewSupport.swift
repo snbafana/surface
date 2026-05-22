@@ -87,7 +87,9 @@ public enum BlockPreview {
         let runtime = block.makeRuntime(
             Block.Context(
                 storageDirectory: fixtureContext.storageDirectory,
-                now: fixtureContext.now
+                now: fixtureContext.now,
+                allowsLiveProcesses: false,
+                allowsExternalWrites: false
             )
         )
         runtime.start()
@@ -149,7 +151,9 @@ public enum BlockPreview {
             let runtime = block.makeRuntime(
                 Block.Context(
                     storageDirectory: fixtureContext.storageDirectory,
-                    now: fixtureContext.now
+                    now: fixtureContext.now,
+                    allowsLiveProcesses: false,
+                    allowsExternalWrites: false
                 )
             )
             runtime.start()
@@ -217,6 +221,7 @@ enum BlockPreviewFixture {
     static func make(blockID: BlockID, fixture: String) throws -> FixtureContext {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("surface-block-preview", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
             .appendingPathComponent(blockID.rawValue, isDirectory: true)
             .appendingPathComponent(fixture, isDirectory: true)
 
@@ -228,8 +233,10 @@ enum BlockPreviewFixture {
             break
         case ("quicksave", "notes-and-captures"):
             try makeQuicksaveFixture(in: directory)
-        case ("copyhistory", "empty"), ("copyhistory", "mixed-clipboard"):
+        case ("copyhistory", "empty"):
             break
+        case ("copyhistory", "mixed-clipboard"):
+            try makeCopyHistoryFixture(in: directory)
         case ("codexlog", "empty"):
             break
         case ("codexlog", "active-thread"):
@@ -253,6 +260,20 @@ enum BlockPreviewFixture {
         for url in [capture, note, standalone] {
             try FileManager.default.setAttributes([.modificationDate: fixedNow], ofItemAtPath: url.path)
         }
+    }
+
+    private static func makeCopyHistoryFixture(in directory: URL) throws {
+        try [
+            "Investor memo excerpt copied from Notes.",
+            "https://example.com/surface-preview",
+            "Follow up: confirm Option-C still writes to Obsidian."
+        ]
+        .joined(separator: "\n")
+        .write(
+            to: directory.appendingPathComponent("copyhistory.txt"),
+            atomically: true,
+            encoding: .utf8
+        )
     }
 
     private static func makeCodexLogFixture(in directory: URL) throws {

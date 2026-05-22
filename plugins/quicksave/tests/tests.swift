@@ -103,6 +103,35 @@ struct QuicksaveTests {
         #expect(notes.first?.captureKind == "image")
     }
 
+    @MainActor
+    @Test func runtimeConsumesImplicitCaptureContextAfterSavingNote() throws {
+        let fixture = try QuicksaveFixture()
+        let captureURL = fixture.inboxURL.appendingPathComponent("capture.txt")
+        try "saved".write(to: captureURL, atomically: true, encoding: .utf8)
+
+        let runtime = Runtime(
+            context: Block.Context(
+                storageDirectory: fixture.inboxURL,
+                now: fixture.date,
+                allowsLiveProcesses: false,
+                allowsExternalWrites: false
+            )
+        )
+        runtime.start()
+        defer { runtime.stop() }
+
+        runtime.noteText = "first note"
+        runtime.saveNote()
+        runtime.noteText = "second note"
+        runtime.saveNote()
+
+        let notes = try QuicksaveHistory().todayNotes(in: fixture.inboxURL, now: fixture.date)
+        let notesByText = Dictionary(uniqueKeysWithValues: notes.map { ($0.text, $0) })
+
+        #expect(notesByText["first note"]?.captureName == "capture")
+        #expect(notesByText["second note"]?.captureName == nil)
+    }
+
     @Test func appendsTextCaptureToObsidianDailyNote() throws {
         let fixture = try QuicksaveFixture()
         let captureURL = fixture.inboxURL.appendingPathComponent("capture.txt")

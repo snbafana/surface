@@ -20,7 +20,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panel: SurfacePanel?
     private var statusIcon: StatusIcon?
     private var toggleShortcut: KeyboardShortcutToken?
-    private var localKeyMonitor: Any?
     private var lifecycleObservers: [(NotificationCenter, NSObjectProtocol)] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -28,6 +27,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         registerLaunchAtLoginIfNeeded()
 
         let panel = SurfacePanel()
+        panel.onEscape = { [weak surface] in
+            surface?.hide()
+        }
         panel.contentView = NSHostingView(
             rootView: SurfaceView()
                 .environmentObject(surface)
@@ -43,26 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         toggleShortcut = surface.keyboardShortcuts.registerKeyboardShortcut(
             KeyboardShortcut(keyCode: UInt32(kVK_ANSI_E), modifiers: UInt32(optionKey))
         ) { [weak surface] in
-            surface?.toggleFromShortcut()
-        }
-
-        localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak surface] event in
-            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            let characters = event.charactersIgnoringModifiers?.lowercased()
-            if flags.contains(.option), characters == "e" {
-                MainActor.assumeIsolated {
-                    surface?.toggleFromShortcut()
-                }
-                return nil
-            }
-
-            guard event.keyCode == UInt16(kVK_Escape) else {
-                return event
-            }
-            MainActor.assumeIsolated {
-                surface?.hide()
-            }
-            return nil
+            surface?.toggle()
         }
 
         surface.hide()
@@ -70,9 +53,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        if let localKeyMonitor {
-            NSEvent.removeMonitor(localKeyMonitor)
-        }
         if let toggleShortcut {
             surface.keyboardShortcuts.unregisterKeyboardShortcut(toggleShortcut)
         }

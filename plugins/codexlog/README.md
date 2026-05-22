@@ -63,7 +63,9 @@ Actions must be bite-sized. One approval should map to one thing the user can ev
 
 Purpose: propose instruction updates for `AGENTS.md` / Codex guidance files.
 
-JSONL rule: one row per target file and per exact guidance point. If a proposed file edit has five bullets, append five pending rows. Do not bundle a whole section, whole file, or multi-point patch into one approval.
+JSONL rule: one row per target file and per exact guidance point. Do not bundle a whole section, whole file, or multi-point patch into one approval.
+
+Volume rule: this automation is frustration-driven, not quota-driven. Prefer zero proposals unless there is clear evidence that the user had to correct, repeat, or push back on a behavior. Append at most three pending rows total per 12-hour run across all repos. Skip generic best practices, stylistic preferences, and low-severity reminders.
 
 Recommended `detail` object:
 
@@ -73,6 +75,8 @@ Recommended `detail` object:
   "edit_type": "addition",
   "insertion_point": "Append under Abstraction Guardrails",
   "proposed_text": "- Ask what existing code can be reused before adding a parallel runtime.",
+  "frustration_signal": "The user had to reject a duplicate runtime abstraction.",
+  "observed_pattern": "A new owner was added before existing owners were checked.",
   "rationale": "Observed repeated abstraction drift in the Surface repo."
 }
 ```

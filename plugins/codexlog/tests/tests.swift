@@ -160,6 +160,8 @@ struct CodexLogTests {
         try fixture.writeActions([
             #"{"id":"codex-bundle","status":"pending","title":"Update guidance","detail":{"target_path":"/tmp/AGENTS.md","proposed_text":"- First guardrail\n- Second guardrail"},"automation_id":"daily-codex-guidance-review","created_at":"2026-05-20T01:36:54Z"}"#,
             #"{"id":"backlink-bundle","status":"pending","title":"Add related links","detail":{"source_note_path":"Inbox/ML.md","current_related":["[[Existing]]"],"proposed_links":[{"link":"[[Existing]]"},{"link":"[[Deep Learning]]"},{"link":"[[Machine Learning Trends]]"}]},"automation_id":"daily-obsidian-backlink-proposals","created_at":"2026-05-20T01:34:13Z"}"#,
+            #"{"id":"backlink-single","status":"pending","title":"Display check: Related backlink card","detail":{"source_note_path":"Inbox/Single.md","current_related":[],"link":"[[Surface Codex Log Backlink Display]]","rationale":"Check direct link rows.","approval_patch":{"type":"frontmatter_related_add_single_link","path":"Inbox/Single.md","link":"[[Surface Codex Log Backlink Display]]","insert":"  - \"[[Surface Codex Log Backlink Display]]\""}},"automation_id":"daily-obsidian-backlink-proposals","created_at":"2026-05-20T01:34:14Z"}"#,
+            #"{"id":"backlink-empty","status":"pending","title":"Should not show fallback","detail":{"source_note_path":"Inbox/Empty.md","current_related":[]},"automation_id":"daily-obsidian-backlink-proposals","created_at":"2026-05-20T01:34:15Z"}"#,
             #"{"id":"idea-bundle","status":"pending","title":"Add ideas","detail":{"target_path":"Future Lists/Genuine Ideas List.md","addition_text":"- First idea\n- Second idea with \'taste\'"},"automation_id":"daily-note-to-genuine-ideas","created_at":"2026-05-20T01:33:01Z"}"#
         ])
 
@@ -173,16 +175,25 @@ struct CodexLogTests {
         #expect(codexActions.count == 2)
         #expect(codexActions.allSatisfy { $0.targetPath == "/tmp/AGENTS.md" })
         #expect(codexActions.contains { $0.detail == "First guardrail" })
-        #expect(backlinkActions.count == 2)
-        #expect(backlinkActions.allSatisfy { $0.targetPath == "Inbox/ML.md" })
-        #expect(backlinkActions.contains { $0.title.contains("[[Deep Learning]]") })
+        #expect(backlinkActions.count == 3)
+        #expect(backlinkActions.contains { $0.title == "ML.md: Related += [[Deep Learning]]" })
+        #expect(backlinkActions.contains { $0.detail?.contains("ML.md -> [[Deep Learning]]") == true })
+        #expect(backlinkActions.contains { $0.detail?.contains("Patch: Related += \"[[Deep Learning]]\"") == true })
+        #expect(backlinkActions.contains { $0.title == "Single.md: Related += [[Surface Codex Log Backlink Display]]" })
+        #expect(backlinkActions.contains { $0.detail?.contains("Single.md -> [[Surface Codex Log Backlink Display]]") == true })
+        #expect(backlinkActions.contains { $0.detail?.contains("Patch: - \"[[Surface Codex Log Backlink Display]]\"") == true })
+        #expect(!snapshot.pendingActions.contains { $0.title == "Should not show fallback" })
         #expect(ideaActions.count == 2)
         #expect(ideaActions.contains { $0.detail == "Second idea with 'taste'" })
         #expect(snapshot.pendingActions.allSatisfy { $0.createdAt != nil })
 
         let action = try #require(codexActions.first)
         try reader.approveAction(action)
+        let approvedSnapshot = reader.snapshot()
         let log = try String(contentsOf: fixture.actionLogURL, encoding: .utf8)
+
+        #expect(!approvedSnapshot.pendingActions.contains { $0.id == action.id })
+        #expect(approvedSnapshot.resolvedActions.contains { $0.id == action.id && $0.status == .approved })
         #expect(log.contains(#""target_path":"/tmp/AGENTS.md""#))
         #expect(log.contains(#""text":"#))
     }
