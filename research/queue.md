@@ -2,6 +2,9 @@
 
 ## Ready To Spec
 
+- `browserbasesessioncards`: define a read-only block over explicit Browserbase session cache/fixture JSON with status, duration, recording/debug URLs, and copy/open actions. Do not create sessions, run `browse`, fetch logs, store API keys, or embed browser control.
+- `integrationcatalogfinder`: define a cache-backed integrations.sh search/detect/discover reader for MCP/OpenAPI/GraphQL/CLI source cards. Do not add a network crawler, credential catalog, plugin registry, or live discovery daemon.
+- `agenttoolbeltcards`: define a local-tool status block for explicitly selected Steipete-style tools such as Peekaboo, CodexBar, RepoBar, mcporter, oracle, and cookie utilities. Do not add a generic command launcher or auto-installer.
 - `diagnosticbundlemanifestv1`: consolidate `diagnosticbundle`, `crashattachmentpolicy`, and `diagnosticbundleredactionkeys` into one exact manifest/report schema before implementation.
 - `previewgalleryvisualreader`: define the read-only `previewgallery` view over `visualbaselines.json`, current images, baseline images, and diff images without render/check/record actions.
 
@@ -94,6 +97,9 @@
   - Register in `Package.swift` and `plugins/Blocks.swift`.
   - Add fixtures to `tools/block-preview/support/BlockPreviewSupport.swift`.
   - Update `tests/BlockPreviewTests/BlockPreviewTests.swift`.
+- `integrationhub`: implemented from `integration-blocks-2026-07-05.md`.
+  - Keep the block read-only and readiness-oriented.
+  - Do not run Browserbase automation, call integrations.sh, store credentials, install tools, launch generic commands, or add a second registry.
 - `fileinbox`: implement from `fileinbox-spec.md`.
   - Keep v1 triage-only.
   - Avoid delete and arbitrary rule/action scripting.
