@@ -81,7 +81,7 @@ final class Runtime: ObservableObject, BlockRuntime {
 
 struct ActivityContextReader: Sendable {
     var context: Block.Context
-    var command: @Sendable ([String]) throws -> String = ActivityContextReader.runCommand
+    var command: @Sendable ([String]) throws -> String = LocalCommand.run
 
     func snapshot() -> ActivitySnapshot {
         if let storageDirectory = context.storageDirectory {
@@ -110,9 +110,9 @@ struct ActivityContextReader: Sendable {
         let now = context.now ?? Date()
         let date = Self.dayString(for: now)
         do {
-            let topAppsText = try command([coastPath, "usage", "top-applications", "--tr", date, "--limit", "5"])
-            let sampleText = try command([coastPath, "query", "sample", "--tr", date, "--min-seg-len", "30"])
-            let currentText = try? command([coastPath, "grab-screen"])
+            let topAppsText = try command(["coast", "usage", "top-applications", "--tr", date, "--limit", "5"])
+            let sampleText = try command(["coast", "query", "sample", "--tr", date, "--min-seg-len", "30"])
+            let currentText = try? command(["coast", "grab-screen"])
             return ActivitySnapshot(
                 status: "Live",
                 source: "Coast",
@@ -124,13 +124,6 @@ struct ActivityContextReader: Sendable {
         } catch {
             return .empty(source: "Coast", status: "Coast unavailable")
         }
-    }
-
-    private var coastPath: String {
-        let local = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".local/bin/coast")
-            .path
-        return FileManager.default.isExecutableFile(atPath: local) ? local : "coast"
     }
 
     private func parseTopApps(_ text: String) -> [ActivityApp] {
@@ -183,22 +176,6 @@ struct ActivityContextReader: Sendable {
         )
     }
 
-    private static func runCommand(_ command: [String]) throws -> String {
-        let process = Process()
-        let output = Pipe()
-        let error = Pipe()
-        process.executableURL = URL(fileURLWithPath: command[0])
-        process.arguments = Array(command.dropFirst())
-        process.standardOutput = output
-        process.standardError = error
-        try process.run()
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else {
-            throw ActivityContextError.commandFailed
-        }
-        return String(data: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-    }
-
     private static func dayString(for date: Date) -> String {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
@@ -212,10 +189,6 @@ struct ActivityContextReader: Sendable {
         formatter.formatOptions = [.withInternetDateTime]
         return formatter.string(from: date)
     }
-}
-
-enum ActivityContextError: Error {
-    case commandFailed
 }
 
 struct ActivitySnapshot: Codable, Equatable, Sendable {

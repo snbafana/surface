@@ -82,7 +82,7 @@ final class Runtime: ObservableObject, BlockRuntime {
 
 struct FollowUpReader: Sendable {
     var context: Block.Context
-    var command: @Sendable ([String]) throws -> String = FollowUpReader.runCommand
+    var command: @Sendable ([String]) throws -> String = LocalCommand.run
 
     func state() -> FollowUpState {
         if let storageDirectory = context.storageDirectory {
@@ -109,34 +109,12 @@ struct FollowUpReader: Sendable {
 
     private func liveState() -> FollowUpState {
         do {
-            let data = try command([cuedPath, "sql", Self.sql]).data(using: .utf8) ?? Data()
+            let data = try command(["cued", "sql", Self.sql]).data(using: .utf8) ?? Data()
             let rows = try JSONDecoder().decode([CuedFollowUpRow].self, from: data)
             return FollowUpState(status: rows.isEmpty ? "Clear" : "Live Cued", items: rows.map(\.item))
         } catch {
             return FollowUpState(status: "Cued unavailable", items: [])
         }
-    }
-
-    private var cuedPath: String {
-        let local = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".local/bin/cued")
-            .path
-        return FileManager.default.isExecutableFile(atPath: local) ? local : "cued"
-    }
-
-    private static func runCommand(_ command: [String]) throws -> String {
-        let process = Process()
-        let output = Pipe()
-        process.executableURL = URL(fileURLWithPath: command[0])
-        process.arguments = Array(command.dropFirst())
-        process.standardOutput = output
-        process.standardError = Pipe()
-        try process.run()
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else {
-            throw FollowUpError.commandFailed
-        }
-        return String(data: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
     }
 
     static let sql = """
@@ -176,10 +154,6 @@ struct FollowUpReader: Sendable {
       sent_at desc
     limit 12
     """
-}
-
-enum FollowUpError: Error {
-    case commandFailed
 }
 
 struct FollowUpState: Codable, Equatable, Sendable {

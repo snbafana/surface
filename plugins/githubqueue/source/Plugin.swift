@@ -97,7 +97,7 @@ final class Runtime: ObservableObject, BlockRuntime {
 
 struct GitHubQueueReader: Sendable {
     var context: Block.Context
-    var command: @Sendable ([String]) throws -> String = GitHubQueueReader.runCommand
+    var command: @Sendable ([String]) throws -> String = LocalCommand.run
 
     func state() -> GitHubQueueState {
         if let storageDirectory = context.storageDirectory {
@@ -125,7 +125,7 @@ struct GitHubQueueReader: Sendable {
     private func liveState() -> GitHubQueueState {
         do {
             let output = try command([
-                ghPath,
+                "gh",
                 "pr",
                 "list",
                 "--json",
@@ -144,37 +144,11 @@ struct GitHubQueueReader: Sendable {
         }
     }
 
-    private var ghPath: String {
-        if FileManager.default.isExecutableFile(atPath: "/opt/homebrew/bin/gh") {
-            return "/opt/homebrew/bin/gh"
-        }
-        return "/usr/local/bin/gh"
-    }
-
-    private static func runCommand(_ command: [String]) throws -> String {
-        let process = Process()
-        let output = Pipe()
-        process.executableURL = URL(fileURLWithPath: command[0])
-        process.arguments = Array(command.dropFirst())
-        process.standardOutput = output
-        process.standardError = Pipe()
-        try process.run()
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else {
-            throw GitHubQueueError.commandFailed
-        }
-        return String(data: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-    }
-
     private static let decoder: JSONDecoder = {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return decoder
     }()
-}
-
-enum GitHubQueueError: Error {
-    case commandFailed
 }
 
 struct GitHubQueueState: Codable, Equatable, Sendable {

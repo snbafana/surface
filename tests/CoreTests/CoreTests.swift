@@ -265,6 +265,25 @@ struct CoreTests {
         #expect(workspace.layout.blocks[0].enabled)
         #expect(workspace.layout.blocks[0].frame == GridFrame(x: 3, y: 2, width: 4, height: 3))
     }
+
+    @Test func localCommandFindsExecutablesFromPath() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("surface-local-command-tests", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let executable = directory.appendingPathComponent("surface-test-tool")
+        try "#!/bin/sh\nexit 0\n".write(to: executable, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
+
+        #expect(LocalCommand.executablePath("surface-test-tool", environment: ["PATH": directory.path]) == executable.path)
+    }
+
+    @Test func localCommandRunsAndReportsMissingExecutables() throws {
+        #expect(try LocalCommand.run(["/bin/echo", "surface"]) == "surface\n")
+        #expect(throws: LocalCommand.Failure.missingExecutable("surface-definitely-missing-command")) {
+            try LocalCommand.run(["surface-definitely-missing-command"])
+        }
+    }
 }
 
 private func testBlock(id: BlockID, title: String? = nil, defaultSize: GridSize = GridSize(width: 4, height: 3)) -> Block {
