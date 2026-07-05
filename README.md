@@ -43,6 +43,7 @@ While the app is running:
 - The Activity Context block reads Coast screen-activity summaries when live processes are allowed.
 - The Follow Ups block reads local Cued follow-up candidates when live processes are allowed.
 - The GitHub Queue block reads current-repo pull requests through `gh pr list` when live processes are allowed.
+- The Integration Hub block shows local readiness for agent/workflow CLIs and source-backed integration ideas without running automations or storing credentials.
 
 The run script builds the SwiftPM product, stages `dist/Surface.app`, kills stale project-local raw `App` processes and legacy `Surface.app` processes that can hold old hotkeys, and opens the bundled app. Use this path for normal UI testing instead of repeatedly launching the raw SwiftPM executable.
 
@@ -135,9 +136,9 @@ The extension unit is a `Block`:
 - `Sources/App/Surface.swift` creates `RunningBlocks`, starts runtimes for enabled layout instances, stops disabled runtimes, and asks each runtime for its SwiftUI view.
 - `Sources/Core/Layout.swift` stores block ids, enabled state, and grid frames. Runtime behavior never lives in persisted layout JSON.
 
-Current plugin targets are `Quicksave`, `CopyHistory`, `CodexLog`, `ActivityContext`, `FollowUpQueue`, and `GitHubQueue`. Each exposes `Plugin.block` from its `plugins/<name>/source` directory. `CopyHistory` uses the same runtime contract as the other blocks: previews load `copyhistory.txt` from `Block.Context.storageDirectory`, while the live app watches `NSPasteboard.general` and persists history under Application Support.
+Current plugin targets are `Quicksave`, `CopyHistory`, `CodexLog`, `ActivityContext`, `FollowUpQueue`, `GitHubQueue`, and `IntegrationHub`. Each exposes `Plugin.block` from its `plugins/<name>/source` directory. `CopyHistory` uses the same runtime contract as the other blocks: previews load `copyhistory.txt` from `Block.Context.storageDirectory`, while the live app watches `NSPasteboard.general` and persists history under Application Support.
 
-Context-aware blocks follow the same contract. Previews read deterministic fixture files from `Block.Context.storageDirectory`, while live adapters are guarded by `Block.Context.allowsLiveProcesses`. Live Coast, Cued, and GitHub CLI reads run in plugin-owned background tasks so app launch and global shortcut registration stay responsive.
+Context-aware blocks follow the same contract. Previews read deterministic fixture files from `Block.Context.storageDirectory`, while live adapters are guarded by `Block.Context.allowsLiveProcesses`. Live Coast, Cued, and GitHub CLI reads run in plugin-owned background tasks so app launch and global shortcut registration stay responsive. Integration Hub is intentionally lighter: it checks executable availability and environment readiness, then copies commands or opens source docs from explicit row actions.
 
 ## Add a Plugin
 

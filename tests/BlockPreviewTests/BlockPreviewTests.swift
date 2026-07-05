@@ -47,7 +47,8 @@ struct BlockPreviewTests {
             "codexlog",
             "activitycontext",
             "followupqueue",
-            "githubqueue"
+            "githubqueue",
+            "integrationhub"
         ])
     }
 }

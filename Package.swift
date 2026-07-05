@@ -35,9 +35,9 @@ let package = Package(
         ),
         .target(
             name: "Blocks",
-            dependencies: ["ActivityContext", "CodexLog", "CopyHistory", "FollowUpQueue", "GitHubQueue", "Core", "Quicksave"],
+            dependencies: ["ActivityContext", "CodexLog", "CopyHistory", "FollowUpQueue", "GitHubQueue", "IntegrationHub", "Core", "Quicksave"],
             path: "plugins",
-            exclude: ["activitycontext", "codexlog", "copyhistory", "followupqueue", "githubqueue", "quicksave"],
+            exclude: ["activitycontext", "codexlog", "copyhistory", "followupqueue", "githubqueue", "integrationhub", "quicksave"],
             sources: ["Blocks.swift"]
         ),
         .target(
@@ -97,6 +97,14 @@ let package = Package(
                 .linkedFramework("AppKit")
             ]
         ),
+        .target(
+            name: "IntegrationHub",
+            dependencies: ["Core"],
+            path: "plugins/integrationhub/source",
+            linkerSettings: [
+                .linkedFramework("AppKit")
+            ]
+        ),
         .testTarget(
             name: "CoreTests",
             dependencies: ["Core"],
@@ -131,6 +139,11 @@ let package = Package(
             name: "GitHubQueueTests",
             dependencies: ["GitHubQueue"],
             path: "plugins/githubqueue/tests"
+        ),
+        .testTarget(
+            name: "IntegrationHubTests",
+            dependencies: ["IntegrationHub"],
+            path: "plugins/integrationhub/tests"
         ),
         .testTarget(
             name: "BlockPreviewTests",

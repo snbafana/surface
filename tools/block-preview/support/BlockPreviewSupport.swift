@@ -52,7 +52,8 @@ public enum BlockPreview {
         ("codexlog", ["empty", "active-thread"]),
         ("activitycontext", ["empty", "work-session"]),
         ("followupqueue", ["empty", "mixed-followups"]),
-        ("githubqueue", ["empty", "mixed-prs"])
+        ("githubqueue", ["empty", "mixed-prs"]),
+        ("integrationhub", ["empty", "mixed-integrations"])
     ]
 
     private static let surfaceFixtures: [BlockID: String] = [
@@ -61,7 +62,8 @@ public enum BlockPreview {
         "codexlog": "active-thread",
         "activitycontext": "work-session",
         "followupqueue": "mixed-followups",
-        "githubqueue": "mixed-prs"
+        "githubqueue": "mixed-prs",
+        "integrationhub": "mixed-integrations"
     ]
 
     public static let cases: [BlockPreviewCase] = caseFixtures.flatMap { blockID, fixtures in
@@ -259,6 +261,10 @@ enum BlockPreviewFixture {
             try makeGitHubQueueFixture(in: directory, populated: false)
         case ("githubqueue", "mixed-prs"):
             try makeGitHubQueueFixture(in: directory, populated: true)
+        case ("integrationhub", "empty"):
+            try makeIntegrationHubFixture(in: directory, populated: false)
+        case ("integrationhub", "mixed-integrations"):
+            try makeIntegrationHubFixture(in: directory, populated: true)
         default:
             throw BlockPreviewError.unknownFixture("\(blockID.rawValue)/\(fixture)")
         }
@@ -517,6 +523,96 @@ enum BlockPreviewFixture {
         }
         try text.write(
             to: directory.appendingPathComponent("githubqueue-prs.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+    }
+
+    private static func makeIntegrationHubFixture(in directory: URL, populated: Bool) throws {
+        let text: String
+        if populated {
+            text = """
+            {
+              "status": "4 of 7 ready",
+              "items": [
+                {
+                  "id": "browserbase-browse",
+                  "name": "Browserbase Browse",
+                  "kind": "browser automation",
+                  "status": "Needs key",
+                  "detail": "Browse CLI is installed; set BROWSERBASE_API_KEY for cloud session commands.",
+                  "command": "browse status",
+                  "url": "https://docs.browserbase.com/integrations/skills/browse-cli",
+                  "priority": 1
+                },
+                {
+                  "id": "integrations-sh",
+                  "name": "integrations.sh",
+                  "kind": "catalog api",
+                  "status": "Available",
+                  "detail": "Search/detect/discover MCP, OpenAPI, GraphQL, and CLI surfaces without a local registry.",
+                  "command": "curl 'https://integrations.sh/api/search?q=browserbase&kind=cli&limit=5'",
+                  "url": "https://integrations.sh/openapi.json",
+                  "priority": 3
+                },
+                {
+                  "id": "coast",
+                  "name": "Coast",
+                  "kind": "screen context",
+                  "status": "Ready",
+                  "detail": "coast is on PATH and can supply current/recent activity context.",
+                  "command": "coast usage top-applications --tr today --limit 5",
+                  "url": "https://coast.ai",
+                  "priority": 4
+                },
+                {
+                  "id": "cued",
+                  "name": "Cued",
+                  "kind": "contacts",
+                  "status": "Ready",
+                  "detail": "cued is available for local follow-up and relationship queues.",
+                  "command": "cued integrations status",
+                  "url": null,
+                  "priority": 4
+                },
+                {
+                  "id": "gh",
+                  "name": "GitHub CLI",
+                  "kind": "developer queue",
+                  "status": "Ready",
+                  "detail": "gh is on PATH for current-repo PR and review queues.",
+                  "command": "gh pr list --limit 12",
+                  "url": "https://cli.github.com",
+                  "priority": 4
+                },
+                {
+                  "id": "browserbase-bb",
+                  "name": "Browserbase bb",
+                  "kind": "legacy cli",
+                  "status": "Optional",
+                  "detail": "Older package exposes bb; prefer browse for new Browserbase work.",
+                  "command": "npm view @browserbasehq/cli bin version",
+                  "url": "https://www.npmjs.com/package/@browserbasehq/cli",
+                  "priority": 5
+                },
+                {
+                  "id": "steipete-toolbelt",
+                  "name": "Agent Toolbelt",
+                  "kind": "block ideas",
+                  "status": "Candidates",
+                  "detail": "Peekaboo, mcporter, oracle, CodexBar, RepoBar, and cookie tools are good Surface block patterns.",
+                  "command": "open https://github.com/steipete",
+                  "url": "https://github.com/steipete",
+                  "priority": 8
+                }
+              ]
+            }
+            """
+        } else {
+            text = #"{"status":"Fixture","items":[]}"#
+        }
+        try text.write(
+            to: directory.appendingPathComponent("integrationhub-items.json"),
             atomically: true,
             encoding: .utf8
         )

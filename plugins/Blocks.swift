@@ -4,6 +4,7 @@ import CopyHistory
 import Core
 import FollowUpQueue
 import GitHubQueue
+import IntegrationHub
 import Quicksave
 
 public enum Blocks {
@@ -13,6 +14,7 @@ public enum Blocks {
         CodexLog.Plugin.block,
         ActivityContext.Plugin.block,
         FollowUpQueue.Plugin.block,
-        GitHubQueue.Plugin.block
+        GitHubQueue.Plugin.block,
+        IntegrationHub.Plugin.block
     ])
 }
