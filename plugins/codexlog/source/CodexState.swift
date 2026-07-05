@@ -8,17 +8,20 @@ struct CodexStateReader {
 
     var codexHome: URL
     var includeProcesses: Bool
+    var now: Date?
     var runCommand: CommandRunner
     var fileManager: FileManager
 
     init(
         codexHome: URL = Self.defaultCodexHome,
         includeProcesses: Bool = true,
+        now: Date? = nil,
         fileManager: FileManager = .default,
         runCommand: @escaping CommandRunner = ProcessRunner.run
     ) {
         self.codexHome = codexHome
         self.includeProcesses = includeProcesses
+        self.now = now
         self.fileManager = fileManager
         self.runCommand = runCommand
     }
@@ -26,6 +29,7 @@ struct CodexStateReader {
     func snapshot(threadLimit: Int = 8, runningWindowSeconds: Int = 900) -> CodexSnapshot {
         let threads = readThreads(limit: max(threadLimit, 50))
         return CodexSnapshot(
+            generatedAt: currentDate(),
             threads: Array(threads.prefix(max(1, threadLimit))),
             runningThreads: readRunningThreads(
                 knownThreads: threads,
@@ -94,7 +98,8 @@ struct CodexStateReader {
         windowSeconds: Int
     ) -> [CodexRunningThread] {
         let windowSeconds = max(1, windowSeconds)
-        let cutoff = Date().addingTimeInterval(-TimeInterval(windowSeconds))
+        let now = currentDate()
+        let cutoff = now.addingTimeInterval(-TimeInterval(windowSeconds))
         let logActivity = readRecentLogActivity(windowSeconds: windowSeconds)
         let childCounts = readChildThreadCounts()
 
@@ -185,6 +190,7 @@ struct CodexStateReader {
 
     private func readRecentLogActivity(windowSeconds: Int) -> [String: (count: Int, lastSeenAt: Date?)] {
         let database = codexHome.appendingPathComponent("logs_2.sqlite")
+        let cutoff = Int(currentDate().timeIntervalSince1970) - max(1, windowSeconds)
         guard fileManager.fileExists(atPath: database.path),
               let output = try? runCommand([
                   "/usr/bin/sqlite3",
@@ -196,7 +202,7 @@ struct CodexStateReader {
                   from logs
                   where thread_id is not null
                     and thread_id != ''
-                    and ts >= strftime('%s','now') - \(max(1, windowSeconds))
+                    and ts >= \(cutoff)
                   group by thread_id;
                   """
               ]) else {
@@ -483,6 +489,10 @@ struct CodexStateReader {
 
     private var actionLog: ActionLog {
         ActionLog(codexHome: codexHome, fileManager: fileManager)
+    }
+
+    private func currentDate() -> Date {
+        now ?? Date()
     }
 
     private func unquote(_ value: String) -> String {

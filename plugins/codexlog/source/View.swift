@@ -92,7 +92,10 @@ struct PluginView: View {
             } else {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(snapshot.runningThreads.prefix(2)) { runningThread in
-                        RunningThreadRow(runningThread: runningThread)
+                        RunningThreadRow(
+                            runningThread: runningThread,
+                            referenceDate: snapshot.generatedAt
+                        )
                     }
                 }
             }
@@ -113,6 +116,7 @@ struct PluginView: View {
                     action: selectedAction,
                     threadTitle: threadTitle(for: selectedAction.threadID),
                     queuePosition: selectedActionIndex.map { "\($0 + 1) of \(pendingActions.count)" },
+                    referenceDate: snapshot.generatedAt,
                     approve: {
                         approve(selectedAction)
                     },

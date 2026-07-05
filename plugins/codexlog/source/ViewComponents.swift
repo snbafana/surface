@@ -40,6 +40,7 @@ struct SectionHeader: View {
 
 struct RunningThreadRow: View {
     let runningThread: CodexRunningThread
+    let referenceDate: Date
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -73,10 +74,10 @@ struct RunningThreadRow: View {
         guard let lastSeenAt = runningThread.lastSeenAt else {
             return "active"
         }
-        if abs(lastSeenAt.timeIntervalSinceNow) < 2 {
+        if abs(lastSeenAt.timeIntervalSince(referenceDate)) < 2 {
             return "now"
         }
-        return Self.relativeDateFormatter.localizedString(for: lastSeenAt, relativeTo: Date())
+        return Self.relativeDateFormatter.localizedString(for: lastSeenAt, relativeTo: referenceDate)
     }
 
     private static let relativeDateFormatter: RelativeDateTimeFormatter = {
@@ -130,6 +131,7 @@ struct ActionCard: View {
     let action: CodexActionProposal
     let threadTitle: String?
     let queuePosition: String?
+    let referenceDate: Date
     let approve: () -> Void
     let deny: () -> Void
     @State private var dragOffset: CGFloat = 0
@@ -284,7 +286,7 @@ struct ActionCard: View {
         guard let createdAt = action.createdAt else {
             return nil
         }
-        return Self.relativeDateFormatter.localizedString(for: createdAt, relativeTo: Date())
+        return Self.relativeDateFormatter.localizedString(for: createdAt, relativeTo: referenceDate)
     }
 
     private var threadLabel: String? {

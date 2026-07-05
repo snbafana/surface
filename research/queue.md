@@ -1,0 +1,419 @@
+# Research Queue
+
+## Ready To Spec
+
+- `diagnosticbundlemanifestv1`: consolidate `diagnosticbundle`, `crashattachmentpolicy`, and `diagnosticbundleredactionkeys` into one exact manifest/report schema before implementation.
+- `previewgalleryvisualreader`: define the read-only `previewgallery` view over `visualbaselines.json`, current images, baseline images, and diff images without render/check/record actions.
+
+## Ready To Implement
+
+- `visualbaselinereportschema`: implement from `visualbaselinereportschema-spec.md` as the v1 `.build/surface-status/visualbaselines.json` contract, not a `BlockRuntime`.
+  - Add report models in `BlockPreviewSupport` when implementing `visualbaselines`.
+  - Use `schema: "surface.visualbaselines.report.v1"` and `version: 1`.
+  - Include required top-level sections: `paths`, `platform`, `renderer`, `artifactPolicy`, `tolerancePolicy`, `summary`, `results`, and `warnings`.
+  - Preserve result order from `BlockPreview.cases` plus `surface-active`.
+  - Classify statuses in order: `renderFailed`, `unreadable`, `missingBaseline`, `extraBaseline`, `platformMismatch`, `dimensionMismatch`, `pixelMismatch`, `passed`.
+  - Use repo-relative paths and `${repoRoot}` instead of absolute repo paths.
+  - Let `previewgallery`, `diagnosticbundle`, and `localbuildstatus` read or summarize the report, but never mutate, approve, upload, or regenerate it.
+  - Do not add a plugin, registry entry, schema service, second report registry, second fixture registry, platform lane registry, artifact manager, approval queue, upload path, or second registry.
+- `diagnosticbundleredactionkeys`: implement from `diagnosticbundleredactionkeys-spec.md` as fixed redaction constants and summary/report formatting inside `diagnosticbundle`, not a `BlockRuntime`.
+  - Add policy version `diagnosticbundle-redaction-v1`.
+  - Apply `redact-known-keys` only to JSON and JSONL artifacts.
+  - Use exact key and dotted-path maps for secret, identity, path, local-context, and crash-detail fields.
+  - Replace values with deterministic tokens such as `[redacted:secret]`, `[redacted:identity]`, `[redacted:path]`, `[redacted:local-context]`, and `[redacted:crash-detail]`.
+  - Normalize repo-root, home, fixture, and safe relative paths in `summary.md`; redact unsafe absolute paths.
+  - Generate deterministic `summary.md` and `redaction-report.json` outputs without original values or value hashes.
+  - Skip unsupported `redact-known-keys` formats with `redaction-unsupported-format` rather than copying raw.
+  - Do not add a plugin, registry entry, sanitizer service, per-plugin DSL, broad text-log regex scrubber, AI scrubber, upload-time scrubber, shell tool, source-store scanner, or second registry.
+- `rendererscalecontrol`: implement from `rendererscalecontrol-spec.md` as `BlockImageRenderer` / `BlockPreview` configuration, not a `BlockRuntime`.
+  - Add one `BlockRenderConfiguration` with scale, appearance, and locale fields in `BlockPreviewSupport`.
+  - Keep `previewDefault` as current behavior: actual scale, system appearance, and current locale.
+  - Add `baselineDefault`: fixed scale `2.0`, light appearance, and `en_US_POSIX` locale.
+  - Pass configuration through `BlockPreview.render`, `renderAll`, `renderSurface`, and `BlockImageRenderer.pngData`.
+  - Add CLI options: `--scale`, `--appearance`, and `--locale`.
+  - Render fixed scale into exact pixel dimensions; do not resize PNG output afterward.
+  - Record renderer metadata in future `visualbaselines.json`.
+  - Do not add a plugin, registry entry, second renderer, second fixture registry, platform lane registry, global appearance/locale mutation, live overlay behavior change, broad pixel tolerance, shell tool, ImageMagick path, or second registry.
+- `crashattachmentpolicy`: implement from `crashattachmentpolicy-spec.md` as `diagnosticbundle` artifact classification policy, not a `BlockRuntime`.
+  - Reuse the existing `diagnosticbundle` manifest, export, redaction, and skipped-reason flow.
+  - Add crash/symbol artifact kinds: `crash-summary`, `crash-report`, `symbolication-handoff`, `symbolication-output`, `dsym-catalog`, `dsym-bundle`, `xcode-archive`, `app-bundle`, `app-binary`, `bcsymbolmap`, `sysdiagnose`, and `third-party-crash-export`.
+  - Include generated crash summaries, copied handoff text, and redacted dSYM catalog metadata by default.
+  - Mark raw crash reports, raw symbolication output, and third-party crash exports as `manual-review` by default.
+  - Exclude dSYM bundles, Xcode archives, app bundles, app binaries, BCSymbolMaps, and sysdiagnose artifacts by default in v1.
+  - Require `allowSensitiveCrashArtifact` before a manifest can make a sensitive crash/symbol kind less restrictive than the policy default.
+  - Skip directory-valued artifacts in v1 and write deterministic skipped reasons into `redaction-report.json`.
+  - Do not add a plugin, registry entry, exporter, diagnostics bus, uploader, attachment flow, compression path, command runner, log collector, directory copier, scanner, or second registry.
+- `visualbaselines`: implement from `visualbaselines-spec.md` as a block-preview/test-harness feature, not a `BlockRuntime`.
+  - Reuse `BlockPreview.renderAll`, `BlockPreview.renderSurface`, `Block.Context`, and `BlockRuntime.makeView()`.
+  - Store checked-in baselines under `tests/BlockPreviewTests/Baselines`.
+  - Add `swift run block-preview baseline-check` and `swift run block-preview baseline-record`.
+  - Keep CI check-only; record is an explicit local source-mutating command.
+  - Compare decoded pixels and exact dimensions, ignoring PNG byte/metadata differences.
+  - Write current images, diff images, and `.build/surface-status/visualbaselines.json` under `.build`.
+  - Attach current/baseline/diff artifacts to test failures where XCTest-compatible attachment APIs are available.
+  - Do not create a plugin, registry entry, overlay approval queue, screenshot manager, hosted service integration, shell/ImageMagick path, second fixture registry, or `previewgallery` mutation path.
+- `visualartifactretention`: implement from `visualartifactretention-spec.md` as repository/test/CI policy, not a `BlockRuntime`.
+  - Keep generated current images, diff images, and reports under ignored `.build`.
+  - Make `baseline-check` overwrite `.build/block-preview-current`, `.build/block-preview-diffs`, and `.build/surface-status/visualbaselines.json`.
+  - Keep checked-in baselines under `tests/BlockPreviewTests/Baselines` as code-reviewed test fixtures.
+  - Upload current/diff/report artifacts in CI only on visual-baseline failure.
+  - Use `actions/upload-artifact` with `retention-days: 7`.
+  - Start without Git LFS; revisit only when measured individual baseline size, total baseline size, clone cost, or churn justify it.
+  - Add artifact policy metadata to `visualbaselines.json`.
+  - Let `previewgallery` read policy/report fields and `diagnosticbundle` export selected artifacts, but do not let plugins clean, upload, expire, approve, or move artifacts.
+  - Do not add a block, registry entry, daemon, watcher, cleaner, scheduled retention service, successful-run uploads, generated artifact source control, automatic baseline pruning, compression, duplicate exporter, or second registry.
+- `baselineplatforms`: implement from `baselineplatforms-spec.md` as visual-baseline harness policy, not a `BlockRuntime`.
+  - Keep one default checked-in baseline lane under `tests/BlockPreviewTests/Baselines`.
+  - Add optional `tests/BlockPreviewTests/Baselines/platform.json`.
+  - Pin CI visual-baseline checks to a concrete macOS runner label, not `macos-latest`.
+  - Extend `visualbaselines.json` with platform metadata: OS version, architecture, runner label, renderer, display/renderer scale, appearance, locale, and lane.
+  - Collect metadata through Swift/Foundation/AppKit APIs where possible, not shell commands.
+  - Add `platformMismatch` status before pixel interpretation when OS major version, architecture, rendered pixel dimensions, or renderer scale differs.
+  - Treat patch-version or unavailable scale differences as warnings first.
+  - Add multiple baseline directories only after repeated measured variance proves a second stable platform lane is necessary.
+  - Do not add a plugin/registry entry, per-user/per-machine baselines, automatic lane creation, `previewgallery` mutation, broad tolerances, shell-based metadata collection, duplicate baseline registry, or second registry.
+- `crashsymbolication`: implement from `crashsymbolication-spec.md` as a copy-only `crashreports` extension, not a separate `BlockRuntime`.
+  - Extend `crashreports-index.json` entries with optional explicit symbolication fields: app bundle, executable, dSYM, archive, architecture, binary UUID, load address, and frame addresses.
+  - Parse symbolication clues only from crash files already loaded by `crashreports`.
+  - Show handoff states such as `symbolicated`, `ready for Xcode`, `ready for atos`, `needs dSYM`, `needs executable`, `needs address`, and `unknown`.
+  - Copy Xcode handoff steps, `atos` command templates, and a Markdown checklist.
+  - Reveal only explicit manifest paths.
+  - Reuse Xcode for preferred symbolication, Apple command-line tools for manual symbolication, `scriptoutput` for future explicit execution, `diagnosticbundle` for export/redaction, and `fileinbox` for broad file triage.
+  - Do not add a plugin/registry entry, run `atos`/`symbolicatecrash`/`dwarfdump`/`xcrun`/Xcode, search DerivedData or Archives, download dSYMs, upload symbols, mutate crash files, parse DWARF/Mach-O contents, infer root cause, duplicate command/export/file owners, or add a second registry.
+- `dsymcatalog`: implement from `dsymcatalog-spec.md` as an optional explicit manifest read by `crashreports`/`crashsymbolication`, not a separate `BlockRuntime`.
+  - Read `dsymcatalog.json` and optional `symbolCatalogPath` references from `crashreports-index.json`.
+  - Match rows using explicit bundle id, app version/build, architecture, executable name, platform, and binary image UUIDs.
+  - Treat UUID matches as strong, version/build text matches as possible, and conflicts/ambiguity as warnings.
+  - Show matched row, UUIDs, architecture, app version/build, explicit dSYM/archive/app/executable paths, stale/missing path warnings, and copy/reveal actions inside `crashreports`.
+  - Copy Xcode handoff Markdown, dSYM checklists, catalog row JSON, and `atos` templates only when `crashsymbolication` has a single strong match plus required addresses.
+  - Reuse Xcode/App Store Connect for archive/debug-symbol workflows, Apple CLI tools for manual UUID verification, `scriptoutput` for future explicit catalog producers, `diagnosticbundle` for export/redaction, and `fileinbox` for broad triage.
+  - Do not add a plugin/registry entry, scan DerivedData/Archives/Spotlight/folders, run `dwarfdump`/`atos`/`xcrun`/`mdfind`, download/upload symbols, parse DWARF/Mach-O, mutate files, create a symbol database, duplicate existing owners, or add a second registry.
+- `githubqueue`: implement from `githubqueue-spec.md`.
+  - Add `plugins/githubqueue/source/Plugin.swift`.
+  - Add tests under `plugins/githubqueue/tests`.
+  - Register in `Package.swift` and `plugins/Blocks.swift`.
+  - Add fixtures to `tools/block-preview/support/BlockPreviewSupport.swift`.
+  - Update `tests/BlockPreviewTests/BlockPreviewTests.swift`.
+- `fileinbox`: implement from `fileinbox-spec.md`.
+  - Keep v1 triage-only.
+  - Avoid delete and arbitrary rule/action scripting.
+  - Use fixture directory scanning through `Block.Context.storageDirectory`.
+- `contextcard`: implement from `contextcard-spec.md`.
+  - Ship no-AX v1 using NSWorkspace and CoreGraphics only.
+  - Add AX-based focused-window/selected-text support only after explicit permission UI.
+  - Treat missing window title as normal, not as an error.
+- `permissionsdashboard`: implement from `permissionsdashboard-spec.md`.
+  - Keep checkers plugin-local initially.
+  - Request permissions only from explicit row buttons.
+  - Add bundle Info.plist purpose-string support before EventKit, Contacts, or Apple Events plugins.
+- `obsidianqueue`: implement from `obsidianqueue-spec.md`.
+  - Reuse/factor Quicksave Obsidian path/date helpers.
+  - Reuse/factor Codex Log action-row filtering instead of adding a second approval queue.
+  - Keep v1 file/URI backed; do not require Obsidian CLI or mutate the vault.
+  - Add `empty` and `daily-with-queue` preview fixtures.
+- `focus`: implement from `focus-spec.md`.
+  - Keep v1 as a local persisted timer/state block.
+  - Use `Block.Context.now` and timestamp-derived state for deterministic previews/tests.
+  - Do not toggle macOS Focus, use Screen Time APIs, block apps/sites, or run a hidden daemon.
+  - Add `idle`, `active-focus`, and `break-due` preview fixtures.
+- `scriptoutput`: implement from `scriptoutput-spec.md`.
+  - Keep v1 to one configured executable.
+  - Use direct executable + argument array, timeout, output byte caps, and visible stderr/exit status.
+  - Parse only safe stdout rows and ignore command-running xbar/SwiftBar action params.
+  - Add `empty`, `ok-output`, and `failed-output` preview fixtures.
+- `localbuildstatus`: implement from `localbuildstatus-spec.md`.
+  - Use read-only git status parsing for repo state.
+  - Read build/test/preview result JSON from `.build/surface-status`.
+  - Do not run build/test/preview commands from the block.
+  - Add `empty`, `clean-passing`, and `dirty-failing` preview fixtures.
+- `systemhealth`: implement from `systemhealth-spec.md`.
+  - Use direct Apple APIs for thermal, power, disk, network, and battery.
+  - Roll up into OK/Watch/Attention and show only actionable rows.
+  - Do not add CPU/memory/fan graphs, speed tests, pings, shell commands, or privileged helpers.
+  - Add `healthy`, `attention`, and `offline-desktop` preview fixtures.
+- `linkinbox`: implement from `linkinbox-spec.md`.
+  - Keep v1 clipboard/file-backed with cached metadata only.
+  - Do not fetch titles automatically or read browser history/tabs.
+  - Reuse/factor pasteboard URL/text extraction with Copy History/Quicksave if passive watching is added.
+  - Add `empty`, `pending-links`, and `archived-cache` preview fixtures.
+- `calendarprep`: implement from `calendarprep-spec.md`.
+  - Start fixture-first with `calendarprep-events.json` and `Block.Context.now`.
+  - Add live EventKit only after `NSCalendarsFullAccessUsageDescription` is present in bundle generation.
+  - Use `permissionsdashboard` for explicit full-access request flow.
+  - Query only a short future range and sort returned events before display.
+  - Add `empty-day`, `next-meeting`, `busy-day`, and `blocked-permission` preview fixtures.
+- `snippetprompt`: implement from `snippetprompt-spec.md`.
+  - Read `snippetprompt-library.json` and optional `snippetprompt-context.json`.
+  - Resolve only safe placeholders: date/time, explicit arguments, explicit context file, and clipboard text on copy action.
+  - Do not add auto-expansion, global key monitoring, AI execution, browser-tab reads, selected-text scraping, or shell placeholders.
+  - Reuse/factor pasteboard write behavior with Copy History only after inspecting both call sites.
+  - Add `empty`, `mixed-library`, `needs-context`, and `context-ready` preview fixtures.
+- `windowlayouts`: implement from `windowlayouts-spec.md`.
+  - Reuse `permissionsdashboard` for Accessibility status/request flow.
+  - Reuse `contextcard`-style frontmost app/window identity; do not add a second context owner.
+  - Keep previews fixture-only with no-op apply/save actions.
+  - Live actions operate only on the focused window through AX position/size attributes.
+  - Defer global hotkeys, automatic tiling, multi-app workspace restore, fullscreen toggles, display/Space movement, and app launching.
+  - Add `blocked-accessibility`, `focused-window`, `saved-presets`, and `unsupported-window` preview fixtures.
+- `packagewatch`: implement from `packagewatch-spec.md`.
+  - Keep v1 manual/fixture-backed with no network refresh.
+  - Read `packagewatch-packages.json` and group rows by ETA/status.
+  - Open stored tracking URL or 17TRACK universal URL only on explicit action.
+  - Do not poll carrier APIs, require carrier credentials, scrape email/Wallet/merchant accounts, run webhooks, or infer status from tracking pages.
+  - Add `empty`, `active-deliveries`, `attention`, and `archived` preview fixtures.
+- `financewatch`: implement from `financewatch-spec.md`.
+  - Keep v1 informational, local/cached, and no-network-fetch.
+  - Read `financewatch-watchlist.json` and optional externally cached quotes.
+  - Show source and stale age for every quote.
+  - Do not store API keys, connect brokerage accounts, show balances/cost basis, place trades, or generate buy/sell signals.
+  - Route live quote fetching to `scriptoutput` or a later explicit external writer.
+  - Add `empty`, `mixed-watchlist`, `stale-data`, and `external-cache` preview fixtures.
+- `notificationdigest`: implement from `notificationdigest-spec.md`.
+  - Keep v1 file-backed and Surface-owned.
+  - Read `notificationdigest-events.jsonl` and optional `notificationdigest-settings.json`.
+  - Group by pinned attention, unread warnings/errors, unread info/success, and read recent.
+  - Reuse `permissionsdashboard` for notification permission status/request flow.
+  - Treat delivered notifications as optional Surface/app-owned supplement only.
+  - Do not read other apps' notifications, scrape Notification Center databases, use Accessibility/OCR, mine global unified logs, poll services, schedule alerts, or duplicate source-specific queues.
+  - Add `empty`, `mixed-events`, `attention-unread`, `muted-and-archived`, and `permission-blocked` preview fixtures.
+- `mediacontrols`: implement from `mediacontrols-spec.md`.
+  - Keep v1 as a narrow audio-route/device block, not a generic media controller.
+  - Read `mediacontrols-audio.json`, optional `mediacontrols-presets.json`, and optional `mediacontrols-nowplaying.json`.
+  - Use a public Core Audio adapter for live route state, preferably `AudioHardwareSystem` on supported macOS versions.
+  - Support explicit set-output/input/sound-effects, apply/save preset, copy route summary, and open Sound settings actions.
+  - Treat now-playing data as externally cached context only; do not add play/pause/skip buttons in v1.
+  - Do not use private MediaRemote, scrape system Now Playing, use AppleScript/Apple Events, add Spotify/Music/browser clients, connect Bluetooth/AirPlay, enforce routes in a loop, or add a second registry.
+  - Add `simple-output`, `desk-setup`, `missing-preset-target`, `cached-nowplaying`, and `unsupported-live` preview fixtures.
+- `browsersessioncards`: implement from `browsersessioncards-spec.md`.
+  - Keep v1 fixture-first and read/copy/capture-only.
+  - Read `browsersessioncards-session.json`.
+  - Show active tab first, then a bounded list of other tabs only when the adapter provides them.
+  - Use explicit adapters only: Apple Events after Automation permission, browser extension/native messaging cache after deliberate install, or Chrome DevTools after user-configured debug endpoint.
+  - Reuse/factor `contextcard` frontmost-app identity only after inspecting both call sites.
+  - Handoff URLs to `linkinbox`; do not own durable URL triage.
+  - Do not read browser history/profile databases, import bookmarks, scrape page content, run JavaScript, capture screenshots/OCR, mutate tabs, install extensions, launch debug browsers, or add a second registry.
+  - Add `empty`, `active-tab`, `research-session`, `blocked-automation`, `extension-cache`, and `devtools-cache` preview fixtures.
+- `aicommandscratchpad`: implement from `aicommandscratchpad-spec.md`.
+  - Keep v1 local, file-backed, and copy-oriented.
+  - Read `aicommandscratchpad-runs.jsonl` and optional `aicommandscratchpad-context.json`.
+  - Store per-run assembled instructions, input, context references, status, provider/model labels, and pasted or externally written output.
+  - Treat `snippetprompt` as reusable template owner; do not duplicate its template library.
+  - Copy assembled prompt, message JSON, run Markdown, and output.
+  - Capture clipboard as input/output only from explicit actions.
+  - Do not call AI APIs, store provider keys, stream responses, render chat threads, run tools/scripts/MCP, read selected text/browser content, replace active-app text, or add a second registry.
+  - Add `empty`, `draft-run`, `ready-with-context`, `waiting-output`, `external-output`, and `archived-completed` preview fixtures.
+- `hammerspoonbridge`: implement from `hammerspoonbridge-spec.md`.
+  - Keep v1 read-mostly and manifest-backed.
+  - Read `hammerspoonbridge-state.json`.
+  - Hammerspoon owns Lua config, Spoons, hotkeys, permissions, and raw execution.
+  - Surface shows exported commands/statuses/hotkeys/stale labels and copy/open/reveal actions.
+  - Only open predeclared trigger URLs from decoded command rows when external writes/actions are allowed.
+  - Do not run `hs`, evaluate Lua, call `hs -c`, install Spoons, edit config, register hotkeys, inspect arbitrary config files, request Hammerspoon permissions, or duplicate `scriptoutput`.
+  - Add `missing`, `ready-commands`, `stale-export`, `warnings`, and `trigger-disabled` preview fixtures.
+- `keyboardmaestrobridge`: implement from `keyboardmaestrobridge-spec.md`.
+  - Keep v1 read-mostly and curated-manifest-backed.
+  - Read `keyboardmaestrobridge-state.json`.
+  - Keyboard Maestro owns macros, macro groups, triggers, actions, palettes, editor state, engine state, plug-in actions, and macro execution.
+  - Surface shows exported engine/editor status, curated macro rows, trigger labels, stale labels, copy/open/reveal actions, and status rows.
+  - Only open decoded local `kmtrigger://` and `keyboardmaestro://m=` URLs from manifest rows when external actions are allowed.
+  - Do not run AppleScript, `osascript`, the `keyboardmaestro` CLI, action XML, remote trigger URLs, macro database parsing, macro import/export, or Keyboard Maestro plug-in actions.
+  - Add `missing`, `ready-macros`, `stale-export`, `disabled-macros`, `trigger-disabled`, and `warnings` preview fixtures.
+- `contactquicklook`: implement from `contactquicklook-spec.md`.
+  - Keep v1 fixture-first, cached-card-backed, and exact-lookup-only.
+  - Read `contactquicklook-contacts.json`.
+  - Reuse `permissionsdashboard` for Contacts permission status/request flow.
+  - Require `NSContactsUsageDescription` in bundle generation before live Contacts lookup.
+  - Live lookup may use exact contact identifiers, email predicates, or phone predicates only after explicit user action.
+  - Do not enumerate all contacts, build broad search, create/edit/delete/merge contacts, background-sync the address book, infer relationships, or auto-match clipboard/selected text.
+  - Add `empty`, `cached-cards`, `blocked-permission`, `exact-email-match`, `stale-cache`, and `partial-fields` preview fixtures.
+- `bookmarkcards`: implement from `bookmarkcards-spec.md`.
+  - Keep v1 file-backed, local, and separate from `linkinbox`.
+  - Read `bookmarkcards-bookmarks.json`.
+  - Surface owns curated shelves/read-later state only; `linkinbox` owns URL capture and triage.
+  - Open/copy/pin/mark-read/archive actions should mutate only local JSON records when writes are allowed.
+  - Do not read browser profile files, browser history, active tabs, page content, WebExtension bookmark APIs, or network metadata in v1.
+  - Treat exported bookmark HTML, `.webloc` folders, browser bookmark APIs, and browser-extension caches as future explicit import/cache paths.
+  - Add `empty`, `curated-shelves`, `read-later`, `stale-import`, `read-only`, and `linkinbox-handoff` preview fixtures.
+- `texttransform`: implement from `texttransform-spec.md`.
+  - Keep v1 explicit-input, deterministic, and copy-only.
+  - Read `texttransform-state.json`.
+  - Copy History owns passive clipboard history; `snippetprompt` owns templates; `scriptoutput` owns custom scripts; `contextcard` owns selected/front-app context; `aicommandscratchpad` owns AI.
+  - Support only built-in transforms: plain text, trim/collapse whitespace, case changes, slugify, URL encode/decode, Base64 encode/decode, JSON string, Markdown quote/code fence.
+  - Do not watch clipboard passively, read selected text, paste into active apps, run scripts/Shortcuts/AppleScript, expose custom regex pipelines, call AI APIs, or duplicate `snippetprompt` templates.
+  - Add `empty`, `clean-whitespace`, `case-and-slug`, `url-json`, `base64-error`, and `markdown` preview fixtures.
+- `appquicklaunch`: implement from `appquicklaunch-spec.md`.
+  - Keep v1 curated, JSON-backed, explicit-action only.
+  - Read `appquicklaunch-items.json`.
+  - `contextcard` owns front-app state; `fileinbox` owns recent files; `linkinbox` owns URL triage; `bookmarkcards` owns bookmark shelves; automation bridges own macro/script triggers.
+  - Support only app/file/folder/URL/deeplink targets declared in the JSON.
+  - Use AppKit through a tiny injected workspace-opening adapter; keep it plugin-local until other owners prove they need it.
+  - Do not enumerate installed apps, query Spotlight, add global hotkeys, read selected text/browser tabs/clipboard, run scripts/AppleScript/Shortcuts/macros, select menu items, move windows, restore workspaces, or add a second registry.
+  - Add `empty`, `apps-ready`, `project-files`, `urls-and-deeplinks`, `missing-targets`, and `external-actions-blocked` preview fixtures.
+- `clipboardrules`: implement from `clipboardrules-spec.md` inside the existing `copyhistory` runtime.
+  - Do not add `plugins/clipboardrules`, a package target, a registry entry, a second pasteboard watcher, or a background rule daemon.
+  - Read `copyhistory-rules.json` beside `copyhistory.txt`.
+  - Evaluate a pure capture decision before `CopyHistoryStore.add`.
+  - Ignore transient, concealed, autogenerated, proprietary password/temporary, and remote pasteboard marker types by default.
+  - Support pause capture, ignore next copy, max character limit, and `org.nspasteboard.source` bundle exclusions.
+  - Persist accepted text only; blocked-event logs must be metadata-only and must not include text, hashes, excerpts, or transformed content.
+  - Do not read selected text/browser tabs/active app contents, run scripts/macros/Shortcuts/AppleScript, transform entries, route to other plugins, fetch network metadata, call AI APIs, paste into active apps, or add a second registry.
+  - Extend `copyhistory` fixtures with `rules-paused`, `rules-filtered`, `rules-invalid`, and `rules-sensitive`.
+- `workspacepins`: implement from `workspacepins-spec.md`.
+  - Keep v1 read-mostly, curated, and file-backed.
+  - Read `workspacepins-workspaces.json`.
+  - `appquicklaunch` owns single launch targets; `fileinbox` owns recent-file scanning; `contextcard` owns current app/window snapshots; `bookmarkcards`/`linkinbox` own links; `windowlayouts` owns window movement; `scriptoutput`/`localbuildstatus` own commands/status.
+  - Show project cards with root path, primary launch, note, tags, refs, active-context match, and optional explicit cached recent-file rows.
+  - Open/reveal/copy exactly one configured target per action.
+  - Do not launch groups, restore sessions/tabs/windows/Spaces/Stage Manager, scan arbitrary roots, run commands/builds/git/scripts/macros, mutate other plugin stores, create a project registry, or add a second registry.
+  - Add `empty`, `active-project`, `multi-projects`, `missing-root`, `recent-cache`, and `read-only` preview fixtures.
+- `scratchcapturestack`: implement from `scratchcapturestack-spec.md`.
+  - Keep v1 bounded, explicit, short-lived, and reference-only.
+  - Read `scratchcapturestack-items.json`.
+  - `quicksave` owns durable capture and Obsidian writes; `fileinbox` owns file scanning; Copy History owns passive clipboard history; `linkinbox` owns URL triage; `bookmarkcards` owns durable shelves.
+  - Store file/URL refs rather than copying file payloads or fetching URL metadata.
+  - Store direct text only when the user explicitly adds that text to the stack.
+  - Support copy/open/reveal/pin/unpin/mark-done/remove/clear-expired actions against stack records only.
+  - Do not watch the clipboard, scan directories, read browser state, fetch metadata, mutate source plugin stores, run scripts/macros/uploads/processors, become a universal inbox or file manager, or add a second registry.
+  - Add `empty`, `mixed-stack`, `pinned-items`, `expired-items`, `missing-file`, and `read-only` preview fixtures.
+- `worktreecards`: implement from `worktreecards-spec.md`.
+  - Keep v1 read-only, cache-backed, and non-mutating.
+  - Read `worktreecards-worktrees.json` in previews/tests or `worktreecards-config.json` in live mode.
+  - Use `git worktree list --porcelain -z` only for read-only discovery when live processes are allowed.
+  - Reuse/factor `localbuildstatus` git-status/result parsing only after implementation proves overlap.
+  - Join PR data only from `githubqueue` cache/handoff, not a second GitHub query owner.
+  - Join recent files only from explicit File Inbox/external cache files.
+  - Support open/reveal/copy/open-PR actions over one worktree at a time.
+  - Do not create/remove/prune/repair/lock worktrees, checkout/switch branches, stage/commit/stash/pull/push/fetch, run builds/tests/previews, run editor CLIs, mutate other plugin stores, launch groups, or add a second registry.
+  - Add `empty`, `multi-worktrees`, `dirty-failing`, `locked-prunable`, `pr-linked`, and `read-only` preview fixtures.
+- `readmehub`: implement from `readmehub-spec.md`.
+  - Keep v1 read-only, docs-index-only, and command-copy-only.
+  - Read `readmehub-index.json`.
+  - Default to bounded local docs only: `README.md`, `AGENTS.md`, `docs/*.md`, `plugins/*/README.md`, and `research/README.md`.
+  - Include `research/*-spec.md` only when configured.
+  - Extract headings, local Markdown links, and fenced shell command strings; do not render or edit Markdown.
+  - Surface the existing README add-a-plugin checklist and preview commands as read-only/copyable rows.
+  - Open/reveal docs and copy paths, Markdown links, commands, or checklists.
+  - Do not generate READMEs/DocC/templates, run commands, validate registry/preview/test health, scan the whole repo, create plugins, mutate Package.swift or `plugins/Blocks.swift`, launch editor CLIs, or add a second registry.
+  - Add `empty`, `surface-docs`, `plugin-authoring`, `research-specs`, `missing-docs`, and `read-only` preview fixtures.
+- `registryhealth`: implement from `registryhealth-spec.md`.
+  - Keep v1 read-only, report-backed, and non-mutating.
+  - Read one configured generated report such as `registryhealth-status.json` or `.build/surface-status/registryhealth.json`.
+  - Show registry, package target, plugin test, preview fixture, default layout, and preview render status per block.
+  - Open/reveal/copy only existing owner files and verification commands.
+  - Do not generate registry files, mutate `Package.swift`, edit layout/fixture/test files, run tests/previews, parse arbitrary Swift ASTs, scaffold plugins, duplicate `localbuildstatus`/`readmehub`/`scriptoutput`, or add a second registry.
+  - Add `empty`, `healthy-current`, `missing-fixtures`, `package-mismatch`, `preview-failed`, `stale-report`, and `read-only` preview fixtures.
+- `plugintemplates`: implement from `plugintemplates-spec.md`.
+  - Keep v1 read-only, copy-only, and non-generating.
+  - Read optional `plugintemplates-catalog.json`; fall back to plugin-local default pattern cards.
+  - Show minimal block, runtime lifecycle, context gates, file-backed state, action row, tests, preview fixture, wiring, and README outline patterns.
+  - Open/reveal local example files and copy snippets, checklists, and validation commands.
+  - Do not create files/folders, mutate `Package.swift`/`plugins/Blocks.swift`/layout/fixture/test files, run commands, parse arbitrary Swift ASTs, add a template marketplace, fetch remote templates, duplicate `readmehub`/`registryhealth`/`scriptoutput`, or add a second registry.
+  - Add `empty`, `minimal-authoring`, `file-backed`, `live-gated`, `fixtures-and-tests`, `docs-outline`, and `read-only` preview fixtures.
+- `diagnosticbundle`: implement from `diagnosticbundle-spec.md`.
+  - Keep v1 manifest-backed, explicit-export, and local-only.
+  - Read `diagnosticbundle-manifest.json`.
+  - Show artifact source, kind, path, size, age, redaction mode, and missing/stale/oversized/manual-review status.
+  - Export only selected allowlisted files into a local folder when external writes are allowed.
+  - Generate `summary.md`, `manifest.json`, and `redaction-report.json`.
+  - Do not upload, email, AirDrop, run commands, trigger sysdiagnose, tail/read unified logs, collect Keychain/env/browser/contact/calendar/clipboard/Codex databases by default, scan arbitrary folders, compress archives, mutate source stores, duplicate status owners, or add a second registry.
+  - Add `empty`, `ready-artifacts`, `stale-and-missing`, `manual-review`, `redacted-events`, `oversized`, and `export-disabled` preview fixtures.
+- `previewgallery`: implement from `previewgallery-spec.md`.
+  - Keep v1 read-only, output-directory-backed, and non-rendering.
+  - Read optional `previewgallery-index.json` and existing `.png` files from the configured preview output directory.
+  - Parse known filenames such as `<block-id>-<fixture>.png` and `surface-active.png`.
+  - Show thumbnail, block id, fixture, dimensions, byte size, modified age, optional metrics, and stale/missing/failed/unknown status.
+  - Open/reveal/copy paths, copy Markdown image links, copy render commands, and copy a gallery summary.
+  - Do not render previews, run tests/commands, instantiate block runtimes, take desktop screenshots, scan arbitrary image folders, mutate/delete/export images, implement visual baselines/diffs/approvals, duplicate `registryhealth`/`localbuildstatus`/`diagnosticbundle`, or add a second registry.
+  - Add `empty`, `current-previews`, `stale-previews`, `missing-indexed`, `failed-metrics`, `unknown-files`, and `read-only` preview fixtures.
+- `crashreports`: implement from `crashreports-spec.md`.
+  - Keep v1 manifest-backed, explicit-file-only, and non-collecting.
+  - Read `crashreports-index.json`; do not scan system crash report directories when the index is absent.
+  - Support explicit `.ips` and `.crash` paths from the manifest.
+  - Parse bounded metadata: process/app name, bundle id, incident id, report date, OS version, app version, exception type, termination reason, triggered thread, file size, and modified age.
+  - Show ready, stale, missing, unreadable, oversized, unsupported, and parse-warning states.
+  - Open/reveal/copy explicit files, copy paths, copy Markdown summaries, and copy redacted issue snippets.
+  - Reuse Console/Finder for browsing, Xcode for analysis/symbolication, MetricKit for app-integrated collection, `diagnosticbundle` for export/redaction, `fileinbox` for broad file triage, `notificationdigest` for event summaries, and `scriptoutput` for external producers.
+  - Do not scan `~/Library/Logs/DiagnosticReports` or `/Library/Logs/DiagnosticReports`, read unified logs, tail Console data, install a crash reporter, adopt MetricKit, run symbolication tools, upload/export/mutate reports, parse full frames/images by default, infer root cause, duplicate other diagnostic owners, or add a second registry.
+  - Add `empty`, `mixed-reports`, `parse-warning`, `stale-reports`, `oversized`, `unsupported`, and `external-actions-disabled` preview fixtures.
+
+## Needs More Research
+
+- Raycast recent/popular extension patterns: look for newer AI/local workflow extensions that are not just wrappers.
+- xbar/SwiftBar plugin directories: sample 20 popular plugins and classify status-only vs action-capable.
+- Hammerspoon Spoons: identify app/window APIs that can be safely wrapped from Swift without Lua.
+- macOS permissions: verify exact modern Info.plist keys needed for Contacts and Apple Events before implementation; Calendar full access is now covered by `calendarprep-spec.md`.
+- Obsidian CLI: verify installed command path, JSON output options, and app-launch side effects before using it in live code.
+- Notifications/sounds: if `focus` needs completion alerts, verify macOS notification permission behavior and Focus interaction before adding it.
+- Script permissions: before live `scriptoutput`, decide whether executable paths must live under Application Support or may point anywhere on disk.
+- Result writer: decide whether to add a helper script that runs the README verification loop and writes `.build/surface-status/*.json`.
+- Registry health report writer: decide whether the generated registry health report should live under Application Support or `.build/surface-status/registryhealth.json`, and whether it should be emitted by `block-preview`, `localbuildstatus`, or a separate explicit verification script; the block itself should not run it.
+- Template catalog ownership: after `plugintemplates` exists, decide whether default snippets should remain plugin-local static data or be generated from README/current examples by an explicit docs build step.
+- Diagnostic bundle compression/redaction: after local-folder export works, decide whether compression belongs in a Finder handoff, an explicit helper, or not at all; also decide the first shared redaction-key allowlist.
+- Renderer scale control: after `baselineplatforms`, decide whether `BlockImageRenderer` should force an explicit scale/appearance/locale for stable baselines before accepting any platform-lane split.
+- Crash attachment policy: after `crashreports`, `crashsymbolication`, and `dsymcatalog` exist, decide which crash/symbol artifacts are safe for `diagnosticbundle` passthrough, summary-only, manual-review, or exclude modes.
+- Privacy manifest: before distribution, confirm whether disk capacity and UserDefaults usage need an app privacy manifest entry.
+- Link metadata: before adding title fetches, verify timeout/cache policy and whether LinkPresentation fetches require additional network privacy copy.
+- Calendar meeting links: before provider-specific Zoom/Meet parsing, test whether direct `EKEvent.url` plus exact URL extraction from notes/location covers the common cases.
+- Prompt context handoff: after `contextcard` exists, decide whether it should expose a safe snapshot file or whether `Block.Context` needs a shared context value; do not add that owner inside `snippetprompt`.
+- Window layout multi-display behavior: after focused-window actions work, test scaled/multi-monitor coordinate conversion and decide whether previous/next display movement belongs in `windowlayouts`.
+- Package status integration: if live carrier status becomes important, decide whether `scriptoutput`/external cached JSON is enough before adding any API-backed package integration.
+- Finance market data integration: if live quotes become important, decide whether an external `scriptoutput` cache is enough before adding any API-key-backed provider.
+- Notification emission policy: before any plugin schedules local notifications, decide whether every emitted notification must also append a durable digest event.
+- Core Audio compatibility: before live `mediacontrols`, decide whether to require macOS 15+ `AudioHardwareSystem` or add a legacy `AudioObject*` adapter.
+- Source-specific media control: if playback buttons become important, spec Spotify/Music/browser controls as source-specific plugins or scripts with explicit permissions instead of adding them to `mediacontrols`.
+- Browser extension/native host: before live `browsersessioncards`, decide whether a Surface browser extension is worth the install/support cost compared with Apple Events and fixture/script caches.
+- Browser Automation plist: before Apple Events browser capture ships, ensure bundle generation has `NSAppleEventsUsageDescription` and that `permissionsdashboard` can explain per-browser consent.
+- AI execution integration: before any live `aicommandscratchpad` provider call, design credential storage, provider policy, rate/cost display, cancellation, retry behavior, and output persistence.
+- AI handoff format: after `snippetprompt`, `contextcard`, `browsersessioncards`, and `linkinbox` exist, decide the smallest shared handoff JSON shape for creating AI scratchpad runs.
+- Hammerspoon trigger safety: before live trigger actions, decide whether opening predeclared `hammerspoon://` URLs is acceptable or should remain copy-only behind a setting.
+- Keyboard Maestro trigger safety: before live trigger actions, decide whether opening predeclared local `kmtrigger://` URLs is acceptable or should remain copy-only behind a setting.
+- Contacts limited access: before live `contactquicklook`, verify macOS Contacts authorization behavior, `NSContactsUsageDescription` bundling, and whether a system picker should be used before any full Contacts request.
+- Bookmark import shape: before adding browser bookmark imports, decide whether exported HTML, `.webloc` folders, or extension/native cache is the safest first adapter.
+- Text transform selected-text path: after `contextcard` and permission-gated selected text exist, decide whether selected text should be handed to `texttransform` as explicit input or stay copy-only.
+- App quick-launch grouping: after `appquicklaunch` exists, decide whether project/workspace group cards belong in `workspacepins` or should stay simple sections inside the launch JSON.
+- Clipboard source app exclusion: after Copy History Rules ships, decide whether source app detection beyond `org.nspasteboard.source` should use `contextcard`/frontmost-app state or remain unsupported.
+- Workspace handoff shape: after `workspacepins`, `appquicklaunch`, `fileinbox`, `contextcard`, and `bookmarkcards` exist, decide whether shared refs should remain plain IDs/paths or become a tiny common handoff JSON.
+- Scratch stack handoff shape: after Quicksave, File Inbox, Copy History, and Link Inbox exist, decide whether stack handoffs should be plain JSON records, owner-written append files, or per-plugin explicit buttons.
+- Worktree parser factoring: after `localbuildstatus` and `worktreecards` both exist, decide whether porcelain status parsing should become a tiny shared helper or stay duplicated inside owners.
+- README heading/link parser factoring: after `readmehub` and `registryhealth` both exist, decide whether Markdown extraction should be a tiny shared helper or stay plugin-local.
+
+## Implementation Notes To Carry Forward
+
+- Keep script-runner ideas constrained. A generic script plugin can become a second plugin framework.
+- Prefer local CLIs and files first: `gh`, git state, Finder paths, screenshot folders, Obsidian vault files.
+- Use `Block.Context.storageDirectory` and `now` for every preview.
+- Reuse `BlockChrome`, `RunningBlocks`, `SurfaceView` registry, and the block-preview harness.
+- For Obsidian work, Quicksave owns writes and Codex Log owns approvals; `obsidianqueue` should read and route, not mutate.
+- For Focus work, persist timestamp state and derive phase on refresh; no background daemon or app/site blocker.
+- For script output work, one configured executable is the boundary; no plugin folder, remote install, marketplace, or click-to-run command actions.
+- For local build status, external runners write `.build/surface-status`; the block reads status and copies commands, but does not execute them.
+- For system health, direct Apple APIs only; custom shell-based metrics belong in `scriptoutput`.
+- For link inbox, no automatic network metadata fetches in preview or passive refresh; title fetching must be explicit and cached.
+- For calendar prep, `permissionsdashboard` owns request flow and bundle generation owns `NSCalendarsFullAccessUsageDescription`; the block should read fixtures or read-only EventKit snapshots only.
+- For snippet/prompt work, Copy History owns clipboard history, Context Card owns selected/front-app context, and `snippetprompt` should only copy resolved local templates.
+- For window layout work, `permissionsdashboard` owns Accessibility flow and `contextcard` owns no-AX context snapshots; `windowlayouts` should only move/resize focused windows on explicit action.
+- For package tracking, Link Inbox owns generic URLs and Script Output owns polling; `packagewatch` should own only local package records and explicit open/copy/mark/archive actions.
+- For finance watchlists, `scriptoutput` or an external writer owns market-data fetching; `financewatch` should own only local watchlist records, cached quote display, and explicit open/copy actions.
+- For notification digest, `permissionsdashboard` owns notification permission flow and source plugins own their detailed queues; `notificationdigest` should own only local Surface/plugin event summaries and read/archive/mute actions.
+- For media controls, public Now Playing APIs are app-owned; `mediacontrols` should own only audio route/device state and externally cached now-playing context, while source-specific playback belongs in scripts or future source plugins.
+- For browser session cards, `contextcard` owns generic app/window identity and `linkinbox` owns durable URL records; `browsersessioncards` should own only short-lived active browser tab/session snapshots and explicit URL handoffs.
+- For AI command scratchpads, `snippetprompt` owns reusable templates and context owners own snapshots; `aicommandscratchpad` should own only per-run prompt cards, manual/external outputs, and copy/archive/status actions.
+- For Hammerspoon bridge, Hammerspoon owns automation and permissions; Surface should read exported manifests/status and at most open predeclared trigger URLs.
+- For Keyboard Maestro bridge, Keyboard Maestro owns macro execution, macro storage, plug-in actions, and remote triggers; Surface should read exported manifests/status and at most open predeclared local trigger/editor URLs.
+- For Contact Quick Look, `permissionsdashboard` owns Contacts access, Copy History/Context Card own possible text hints, and `contactquicklook` should only render cached cards or exact identifier/email/phone lookup results.
+- For Bookmark Cards, `linkinbox` owns URL capture/triage and browser adapters own browser bookmark APIs; `bookmarkcards` should own only curated local shelves/read-later state.
+- For Text Transform, Copy History owns clipboard history, `snippetprompt` owns templates, `scriptoutput` owns programmable transforms, and `texttransform` should own only deterministic built-ins over explicit input.
+- For App Quick Launch, `contextcard` owns current app context, `fileinbox` owns recent files, `linkinbox`/`bookmarkcards` own URLs/bookmarks, and `appquicklaunch` should own only curated open/focus/reveal/copy rows.
+- For Copy History Rules, Copy History owns passive capture, storage, polling, and copyback; rules should be a capture-decision layer inside that owner, not a new plugin or automation engine.
+- For Workspace Pins, project cards should compose explicit local refs and caches; launch, file scanning, context capture, bookmarks, window movement, and command execution stay with their existing owners.
+- For Scratch Capture Stack, keep only a short-lived reference shelf; durable capture, scanning, clipboard history, URL triage, bookmark shelves, and note writes stay with their existing source owners.
+- For Worktree Cards, show read-only linked-worktree cards and join cached PR/build/file signals; git mutations, build/test execution, GitHub querying, recent-file scanning, and app launching logic stay with existing owners.
+- For README Hub, docs stay owned by README/AGENTS/plugin READMEs/research specs; the block indexes, opens, and copies only, while registry health, build/test status, command execution, and scaffolding stay with other owners.
+- For Diagnostic Bundle, export existing allowlisted artifacts only; build/test/status generation, registry checks, docs indexes, event summaries, previews, and command execution stay with their existing owners.
+- For Preview Gallery, inspect existing block-preview PNGs only; rendering, fixture coverage, nonblank checks, run status, export, and visual diff policy stay with existing owners.
+- For Crash Report Pointers, require an explicit manifest of files; browsing, symbolication, collection, export, broad file triage, and event digesting stay with existing owners.
+- For Visual Baselines, do not make a plugin. Baselines, diffs, recording, and enforcement belong to `block-preview` and `BlockPreviewTests`; blocks may only read produced reports.
+- For Visual Artifact Retention, do not make a plugin. Generated current/diff/report files are ignored `.build` outputs, checked-in baselines are test fixtures, CI uploads are failure-only with short retention, and Git LFS waits for measured size/churn.
+- For Baseline Platforms, do not make a plugin. Start with one pinned lane, record platform metadata, and split lanes only after measured renderer variance proves it is necessary.
+- For Crash Symbolication, do not make a plugin or runner. Keep it as copied Xcode/CLI handoff inside `crashreports`; execution and discovery stay with Xcode, external tools, `scriptoutput`, or explicit manifest producers.
+- For dSYM Catalogs, do not make a plugin, scanner, downloader, or symbol store. Keep explicit catalog JSON inside `crashreports`; discovery and UUID verification stay with Xcode, App Store Connect, developer tools, `scriptoutput`, or external manifest producers.

@@ -1,6 +1,7 @@
 import AppKit
 import Blocks
 import Core
+import os
 import UI
 import SwiftUI
 
@@ -14,6 +15,7 @@ final class Surface: ObservableObject {
     let keyboardShortcuts: KeyboardShortcuts
     let runningBlocks: RunningBlocks
 
+    private let logger = Logger(subsystem: "com.snbafana.Surface", category: "Surface")
     private weak var panel: SurfacePanel?
 
     init(blocks: BlockRegistry = Blocks.registry) {
@@ -34,10 +36,12 @@ final class Surface: ObservableObject {
     }
 
     func toggle() {
+        logger.info("Toggle requested visible=\(self.isVisible, privacy: .public)")
         isVisible ? hide() : show()
     }
 
     func show() {
+        logger.info("Show requested")
         isVisible = true
         mode = .use
         refreshRunningBlocks()
@@ -45,6 +49,7 @@ final class Surface: ObservableObject {
     }
 
     func edit() {
+        logger.info("Edit requested")
         isVisible = true
         mode = .edit
         refreshRunningBlocks()
@@ -52,8 +57,16 @@ final class Surface: ObservableObject {
     }
 
     func hide() {
+        logger.info("Hide requested")
         isVisible = false
         mode = .use
+        applyVisibility()
+    }
+
+    func reapplyVisibility() {
+        if isVisible {
+            refreshRunningBlocks()
+        }
         applyVisibility()
     }
 
@@ -70,12 +83,12 @@ final class Surface: ObservableObject {
     private func applyVisibility() {
         guard let panel else { return }
         if isVisible {
-            panel.prepareForDisplay()
+            panel.showForDisplay()
             NSApp.activate(ignoringOtherApps: true)
-            panel.orderFrontRegardless()
             panel.makeKey()
+            panel.reassertVisibleAfterActivation()
         } else {
-            panel.orderOut(nil)
+            panel.hideFromDisplay()
         }
     }
 

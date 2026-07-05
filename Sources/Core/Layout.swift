@@ -141,9 +141,12 @@ public enum SurfaceLayout {
     public static let previewCanvasSize = CGSize(width: 1440, height: 900)
 
     public static let defaultLayout = Layout(grid: Grid(columns: 24, rows: 16), blocks: [
-        Block.Instance(id: "quicksave", frame: GridFrame(x: 1, y: 1, width: 10, height: 5)),
-        Block.Instance(id: "copyhistory", frame: GridFrame(x: 12, y: 1, width: 8, height: 8)),
-        Block.Instance(id: "codexlog", frame: GridFrame(x: 15, y: 9, width: 8, height: 7))
+        Block.Instance(id: "quicksave", frame: GridFrame(x: 1, y: 1, width: 8, height: 5)),
+        Block.Instance(id: "copyhistory", frame: GridFrame(x: 10, y: 1, width: 7, height: 6)),
+        Block.Instance(id: "activitycontext", frame: GridFrame(x: 17, y: 1, width: 7, height: 6)),
+        Block.Instance(id: "githubqueue", frame: GridFrame(x: 1, y: 7, width: 8, height: 5)),
+        Block.Instance(id: "followupqueue", frame: GridFrame(x: 9, y: 7, width: 8, height: 5)),
+        Block.Instance(id: "codexlog", frame: GridFrame(x: 17, y: 7, width: 7, height: 8))
     ])
 
     public static func workspace(registry: BlockRegistry) throws -> Workspace {

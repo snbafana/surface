@@ -30,15 +30,14 @@ let package = Package(
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("Carbon"),
-                .linkedFramework("ServiceManagement"),
                 .linkedFramework("SwiftUI")
             ]
         ),
         .target(
             name: "Blocks",
-            dependencies: ["CodexLog", "CopyHistory", "Core", "Quicksave"],
+            dependencies: ["ActivityContext", "CodexLog", "CopyHistory", "FollowUpQueue", "GitHubQueue", "Core", "Quicksave"],
             path: "plugins",
-            exclude: ["codexlog", "copyhistory", "quicksave"],
+            exclude: ["activitycontext", "codexlog", "copyhistory", "followupqueue", "githubqueue", "quicksave"],
             sources: ["Blocks.swift"]
         ),
         .target(
@@ -74,6 +73,30 @@ let package = Package(
             dependencies: ["Core"],
             path: "plugins/codexlog/source"
         ),
+        .target(
+            name: "ActivityContext",
+            dependencies: ["Core"],
+            path: "plugins/activitycontext/source",
+            linkerSettings: [
+                .linkedFramework("AppKit")
+            ]
+        ),
+        .target(
+            name: "FollowUpQueue",
+            dependencies: ["Core"],
+            path: "plugins/followupqueue/source",
+            linkerSettings: [
+                .linkedFramework("AppKit")
+            ]
+        ),
+        .target(
+            name: "GitHubQueue",
+            dependencies: ["Core"],
+            path: "plugins/githubqueue/source",
+            linkerSettings: [
+                .linkedFramework("AppKit")
+            ]
+        ),
         .testTarget(
             name: "CoreTests",
             dependencies: ["Core"],
@@ -93,6 +116,21 @@ let package = Package(
             name: "CodexLogTests",
             dependencies: ["CodexLog"],
             path: "plugins/codexlog/tests"
+        ),
+        .testTarget(
+            name: "ActivityContextTests",
+            dependencies: ["ActivityContext"],
+            path: "plugins/activitycontext/tests"
+        ),
+        .testTarget(
+            name: "FollowUpQueueTests",
+            dependencies: ["FollowUpQueue"],
+            path: "plugins/followupqueue/tests"
+        ),
+        .testTarget(
+            name: "GitHubQueueTests",
+            dependencies: ["GitHubQueue"],
+            path: "plugins/githubqueue/tests"
         ),
         .testTarget(
             name: "BlockPreviewTests",

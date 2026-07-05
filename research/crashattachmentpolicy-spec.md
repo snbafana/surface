@@ -1,0 +1,235 @@
+# `crashattachmentpolicy` Spec
+
+## Decision
+
+Do not build `crashattachmentpolicy` as a Surface plugin, exporter, uploader, scanner, or second diagnostics registry. Implement it as a crash/symbol artifact policy inside the existing `diagnosticbundle` manifest and export flow.
+
+Use the existing `Block` / `BlockRuntime` / `Block.Context` path through `diagnosticbundle`. `crashreports`, `crashsymbolication`, and `dsymcatalog` may label crash/symbol artifacts and provide explicit paths or summaries, but `diagnosticbundle` remains the only owner for export selection, redaction reports, and generated support folders.
+
+## Existing Owner / Dedup Decision
+
+- `diagnosticbundle` owns artifact export, redaction modes, skipped reasons, copied summaries, and generated bundle folders.
+- `crashreports` owns explicit crash report pointers, bounded crash metadata, and redacted crash summaries.
+- `crashsymbolication` owns copied Xcode/CLI handoff text and optional externally generated symbolication-output pointers.
+- `dsymcatalog` owns explicit dSYM/archive/app path metadata and UUID matching hints, not symbol-file contents.
+- `scriptoutput` owns any future command execution or external producer that writes symbolication output.
+- Xcode, App Store Connect, and developer tools own symbolication, archive management, dSYM download, and binary inspection.
+- `crashattachmentpolicy` owns only a manifest-level default classification table and copy-safe summary rules.
+
+If implementation needs fresh symbolication output, dSYM discovery, archive inspection, upload, compression, or system diagnostics, route that work to Xcode, App Store Connect, a developer-run command, `scriptoutput`, or an explicit external producer before `diagnosticbundle` reads the resulting files.
+
+## Product Boundary
+
+It should:
+
+- Extend `diagnosticbundle-manifest.json` with crash/symbol `kind` values and default redaction policies.
+- Classify raw crash reports, symbolication outputs, dSYM bundles, app binaries, and archives before export.
+- Include redacted crash summaries by default when supplied by `crashreports`.
+- Include copied handoff checklists and command templates by default when they contain no raw frames, registers, or private paths beyond explicit user-selected paths.
+- Mark raw crash reports and symbolication logs as `manual-review` by default.
+- Mark dSYM bundles, `.xcarchive` bundles, app bundles, executables, BCSymbolMaps, and sysdiagnose archives as `exclude` by default in v1.
+- Record the reason for every skipped crash/symbol artifact in `redaction-report.json`.
+- Keep all path reads explicit and bounded to the manifest.
+
+It should not:
+
+- Add a `crashattachmentpolicy` `BlockRuntime`, registry entry, overlay panel, daemon, export service, uploader, or diagnostics bus.
+- Upload crash reports, dSYMs, archives, logs, or issue attachments to GitHub, Sentry, Firebase, App Store Connect, email, AirDrop, or any remote service.
+- Recursively copy directories such as `.dSYM`, `.xcarchive`, `.app`, `sysdiagnose`, or DiagnosticReports folders.
+- Run `atos`, `symbolicatecrash`, `dwarfdump`, `xcrun`, `xcodebuild`, `log`, `sysdiagnose`, `zip`, `ditto`, shell scripts, or external apps.
+- Scan `~/Library/Logs/DiagnosticReports`, Xcode Archives, DerivedData, Spotlight, Desktop, Downloads, mounted volumes, or arbitrary folders.
+- Include raw registers, binary-image dumps, memory data, environment variables, launch arguments, user home paths, API keys, usernames, hostnames, or service credentials by default.
+- Mutate crash files, symbol files, source plugin stores, or review state while exporting.
+- Create a second redaction registry or artifact taxonomy outside `diagnosticbundle`.
+
+## First Version
+
+### Manifest Extension
+
+Keep the existing `diagnosticbundle-manifest.json` shape and add crash/symbol artifact kinds. The manifest still lists explicit files only:
+
+```json
+{
+  "version": 1,
+  "maxArtifactBytes": 5000000,
+  "artifacts": [
+    {
+      "id": "crash-summary-surface-option-e",
+      "title": "Surface Option-E crash summary",
+      "source": "crashreports",
+      "kind": "crash-summary",
+      "path": "CrashReports/surface-option-e-summary.md",
+      "redaction": "passthrough",
+      "required": false
+    },
+    {
+      "id": "raw-crash-surface-option-e",
+      "title": "Raw Surface Option-E crash report",
+      "source": "crashreports",
+      "kind": "crash-report",
+      "path": "CrashReports/Surface-2026-06-24-014252.ips",
+      "redaction": "manual-review",
+      "required": false
+    },
+    {
+      "id": "surface-dsym-catalog-row",
+      "title": "Surface dSYM catalog row",
+      "source": "dsymcatalog",
+      "kind": "dsym-catalog",
+      "path": "CrashReports/surface-dsym-row.json",
+      "redaction": "redact-known-keys",
+      "required": false
+    }
+  ]
+}
+```
+
+### New Artifact Kinds
+
+Allowed crash/symbol `kind` values:
+
+- `crash-summary`: bounded Markdown/JSON summary generated by `crashreports`.
+- `crash-report`: raw `.ips` or `.crash` report.
+- `symbolication-handoff`: copied Xcode checklist, dSYM checklist, or command template.
+- `symbolication-output`: externally generated symbolication text or logs.
+- `dsym-catalog`: JSON row or manifest excerpt from `dsymcatalog`.
+- `dsym-bundle`: `.dSYM` directory or file bundle pointer.
+- `xcode-archive`: `.xcarchive` directory pointer.
+- `app-bundle`: `.app` directory pointer.
+- `app-binary`: executable or binary file pointer.
+- `bcsymbolmap`: BCSymbolMap file pointer.
+- `sysdiagnose`: sysdiagnose archive or directory pointer.
+- `third-party-crash-export`: Sentry/Firebase/Crashlytics/exported service payload.
+
+Directory-valued kinds are visible in the UI but skipped by the v1 exporter. They can be copied manually outside Surface after review.
+
+### Default Policy
+
+| Kind | Default Redaction | Default Include | Reason |
+| --- | --- | --- | --- |
+| `crash-summary` | `passthrough` | yes | `crashreports` already strips raw registers, memory addresses, and sensitive paths. |
+| `symbolication-handoff` | `passthrough` | yes | Handoff text is generated from explicit paths and missing-field checklists. |
+| `dsym-catalog` | `redact-known-keys` | yes | Catalog rows are metadata, but paths and notes can expose user/project details. |
+| `crash-report` | `manual-review` | no | Raw reports may include thread state, registers, binary images, identifiers, arguments, and local paths. |
+| `symbolication-output` | `manual-review` | no | Tool output can contain full frames, source paths, usernames, and copied crash details. |
+| `third-party-crash-export` | `manual-review` | no | Service exports may mix event payloads, tags, breadcrumbs, attachments, and user metadata. |
+| `dsym-bundle` | `exclude` | no | Directory/binary symbol contents are large and not copied by v1. |
+| `xcode-archive` | `exclude` | no | Archives can contain app binaries, symbols, products, provisioning context, and large directories. |
+| `app-bundle` | `exclude` | no | App bundles are executable products and directories. |
+| `app-binary` | `exclude` | no | Binaries are not needed for default support summaries and can contain proprietary code. |
+| `bcsymbolmap` | `exclude` | no | Symbol-map files are specialized symbol artifacts and should stay manual tooling inputs. |
+| `sysdiagnose` | `exclude` | no | Broad system diagnostics are outside Surface's support bundle boundary. |
+
+### Known Keys / Patterns
+
+For `redact-known-keys`, start with a small fixed list:
+
+- `crashReporterKey`
+- `deviceIdentifier`
+- `incidentIdentifier`
+- `username`
+- `hostname`
+- `homePath`
+- `sourcePath`
+- `archivePath`
+- `appBundlePath`
+- `executablePath`
+- `dSYMPath`
+- `environment`
+- `arguments`
+- `apiKey`
+- `accessToken`
+- `authToken`
+- `secret`
+- `credentials`
+- `metadata.user`
+- `metadata.email`
+
+Path redaction should prefer home-relative display, such as `~/Library/...`, in `summary.md`. Full absolute paths may remain in the manifest only when the artifact itself is manual-review or excluded and no exported copy is made.
+
+### Export Behavior
+
+1. Load `diagnosticbundle-manifest.json`.
+2. Normalize each artifact kind through the default policy table.
+3. If a manifest redaction is more restrictive than the default, keep the manifest redaction.
+4. If a manifest redaction is less restrictive than the default for a crash/symbol kind, require an explicit `allowSensitiveCrashArtifact: true` flag on that artifact.
+5. Reject directory export in v1 for `.dSYM`, `.xcarchive`, `.app`, and sysdiagnose paths even when the user selects the row.
+6. Copy only included file artifacts.
+7. Write skipped rows with `reason` values such as `manual-review`, `excluded-by-policy`, `directory-not-supported`, `sensitive-kind-requires-flag`, `oversized`, `missing`, or `path-outside-root`.
+
+Example skipped row:
+
+```json
+{
+  "id": "raw-crash-surface-option-e",
+  "reason": "manual-review",
+  "kind": "crash-report",
+  "path": "CrashReports/Surface-2026-06-24-014252.ips"
+}
+```
+
+## Display
+
+In `diagnosticbundle` rows, crash/symbol artifacts should show:
+
+- artifact kind
+- policy label: `included`, `summary only`, `redacted`, `needs review`, or `excluded`
+- source owner
+- explicit path
+- sensitivity reason
+- fixed icon buttons for copy path, reveal source, and toggle include when allowed
+
+Sections:
+
+- Included Summaries
+- Needs Manual Review
+- Excluded Symbol Artifacts
+- Missing or Oversized
+
+The export button should show the included count and skipped count before writing the bundle.
+
+## Source Evidence
+
+- `diagnosticbundle-spec.md` already defines the export owner and the allowed redaction modes: `passthrough`, `summary-only`, `redact-known-keys`, `manual-review`, and `exclude`.
+- `crashreports-spec.md` treats raw crash text as sensitive and copies only bounded summaries that omit device identifiers, private paths, registers, and raw memory addresses by default.
+- `crashsymbolication-spec.md` keeps symbolication as copied handoff text and routes execution to Xcode, developer tools, `scriptoutput`, or external producers.
+- `dsymcatalog-spec.md` keeps dSYM/archive/app path data as explicit metadata and explicitly avoids copying, mutating, scanning, or parsing symbol files.
+- Apple crash-report field documentation covers detailed sections such as process details, exception and termination data, thread state, and binary images.
+- Apple crash-report acquisition documentation treats crash reports and diagnostic logs as explicit debugging artifacts.
+- Sentry's Apple attachments documentation shows attachments as files or bytes sent with event data, including logs or config files.
+- Sentry's data-scrubbing guidance reinforces that sensitive event data should be filtered before it leaves the local boundary.
+- GitHub attaching-files documentation says issue and pull-request attachments are uploaded immediately, so Surface should copy summaries rather than attach files automatically.
+- Apple privacy manifest guidance reinforces that any future upload/telemetry path needs separate privacy review and is out of scope for v1.
+
+## Fixtures
+
+Use `Block.Context.storageDirectory` through `diagnosticbundle` fixtures.
+
+- `crash-summaries`: one crash summary and one symbolication handoff included.
+- `raw-crash-review`: raw `.ips` and `.crash` files visible but excluded by default.
+- `symbol-artifacts-excluded`: dSYM, app bundle, app binary, BCSymbolMap, and archive pointers skipped.
+- `third-party-export-review`: Sentry/Crashlytics-style export payload marked manual-review.
+- `redacted-dsym-catalog`: catalog row with absolute paths and notes redacted in the exported copy.
+- `sensitive-override-blocked`: manifest tries to passthrough a raw crash report without `allowSensitiveCrashArtifact`.
+- `directory-selected`: user selects a directory-valued symbol artifact and exporter skips it with `directory-not-supported`.
+
+## Tests
+
+- Decode the new crash/symbol artifact kinds.
+- Apply the default policy table when no explicit redaction is present.
+- Keep stricter manifest redaction values.
+- Reject less-restrictive redaction on sensitive crash/symbol kinds without `allowSensitiveCrashArtifact`.
+- Redact known path, identity, token, and user metadata keys in `dsym-catalog`.
+- Skip raw crash reports and symbolication outputs by default.
+- Skip directory-valued `.dSYM`, `.xcarchive`, `.app`, and sysdiagnose artifacts in v1.
+- Include generated crash summaries and handoff checklists by default.
+- Write deterministic skipped reasons into `redaction-report.json`.
+- Verify no export path uploads, runs commands, scans directories, compresses archives, or creates a second registry.
+
+## Implementation Notes
+
+- Add the policy table beside the future `diagnosticbundle` manifest models.
+- Keep policy as data and pure classification functions first; do not make it a plugin service.
+- Let `crashreports` generate safer summary artifacts instead of teaching `diagnosticbundle` to parse crash-report internals.
+- Let `dsymcatalog` expose metadata and path chips, but keep binary/directory copying outside v1.
+- If users need full raw bundles later, add an explicit manual export helper with privacy copy, not automatic attachment behavior.

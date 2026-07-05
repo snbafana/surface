@@ -49,13 +49,19 @@ public enum BlockPreview {
     private static let caseFixtures: [(BlockID, [String])] = [
         ("quicksave", ["empty", "notes-and-captures"]),
         ("copyhistory", ["empty", "mixed-clipboard"]),
-        ("codexlog", ["empty", "active-thread"])
+        ("codexlog", ["empty", "active-thread"]),
+        ("activitycontext", ["empty", "work-session"]),
+        ("followupqueue", ["empty", "mixed-followups"]),
+        ("githubqueue", ["empty", "mixed-prs"])
     ]
 
     private static let surfaceFixtures: [BlockID: String] = [
         "quicksave": "notes-and-captures",
         "copyhistory": "mixed-clipboard",
-        "codexlog": "active-thread"
+        "codexlog": "active-thread",
+        "activitycontext": "work-session",
+        "followupqueue": "mixed-followups",
+        "githubqueue": "mixed-prs"
     ]
 
     public static let cases: [BlockPreviewCase] = caseFixtures.flatMap { blockID, fixtures in
@@ -241,6 +247,18 @@ enum BlockPreviewFixture {
             break
         case ("codexlog", "active-thread"):
             try makeCodexLogFixture(in: directory)
+        case ("activitycontext", "empty"):
+            try makeActivityContextFixture(in: directory, populated: false)
+        case ("activitycontext", "work-session"):
+            try makeActivityContextFixture(in: directory, populated: true)
+        case ("followupqueue", "empty"):
+            try makeFollowUpFixture(in: directory, populated: false)
+        case ("followupqueue", "mixed-followups"):
+            try makeFollowUpFixture(in: directory, populated: true)
+        case ("githubqueue", "empty"):
+            try makeGitHubQueueFixture(in: directory, populated: false)
+        case ("githubqueue", "mixed-prs"):
+            try makeGitHubQueueFixture(in: directory, populated: true)
         default:
             throw BlockPreviewError.unknownFixture("\(blockID.rawValue)/\(fixture)")
         }
@@ -277,7 +295,7 @@ enum BlockPreviewFixture {
     }
 
     private static func makeCodexLogFixture(in directory: URL) throws {
-        let nowSeconds = Int(Date().timeIntervalSince1970)
+        let nowSeconds = Int(fixedNow.timeIntervalSince1970)
         let nowMilliseconds = nowSeconds * 1_000
         let sessionsDirectory = directory.appendingPathComponent("sessions", isDirectory: true)
         try FileManager.default.createDirectory(at: sessionsDirectory, withIntermediateDirectories: true)
@@ -297,6 +315,9 @@ enum BlockPreviewFixture {
             #"{"timestamp":"2026-05-20T20:00:00Z","type":"turn_context","payload":{}}"#,
             #"{"timestamp":"2026-05-20T20:00:01Z","type":"event_msg","payload":{"type":"task_complete"}}"#
         ].joined(separator: "\n").write(to: quietSession, atomically: true, encoding: .utf8)
+        for url in [reviewSession, notesSession, quietSession] {
+            try FileManager.default.setAttributes([.modificationDate: fixedNow], ofItemAtPath: url.path)
+        }
 
         try [
             #"{"id":"thread-review","thread_name":"Review generated AGENTS.md change","updated_at":"\#(nowMilliseconds)"}"#,
@@ -363,6 +384,139 @@ enum BlockPreviewFixture {
         .joined(separator: "\n")
         .write(
             to: directory.appendingPathComponent("codexlog-actions.jsonl"),
+            atomically: true,
+            encoding: .utf8
+        )
+    }
+
+    private static func makeActivityContextFixture(in directory: URL, populated: Bool) throws {
+        let text: String
+        if populated {
+            text = """
+            {
+              "status": "Fixture",
+              "source": "Coast",
+              "capturedAt": "2026-05-20T20:10:00Z",
+              "current": {
+                "id": "screen-now",
+                "time": "20:10",
+                "duration": "now",
+                "app": "Codex",
+                "domain": null,
+                "url": "/tmp/coast-cli/screen.png",
+                "title": "Surface plugin implementation"
+              },
+              "topApps": [
+                { "name": "Codex", "time": "23m 30s" },
+                { "name": "Surface", "time": "4m 56s" },
+                { "name": "Obsidian", "time": "2m 54s" }
+              ],
+              "segments": [
+                { "id": "32880", "time": "18:38", "duration": "1m 37s", "app": "Dia", "domain": null, "url": null, "title": "Personal: New Tab" },
+                { "id": "33260", "time": "19:23", "duration": "3m 41s", "app": "Surface", "domain": null, "url": null, "title": "Alt-E overlay test" },
+                { "id": "33586", "time": "19:43", "duration": "2m 10s", "app": "Codex", "domain": null, "url": null, "title": "Plugin build" }
+              ]
+            }
+            """
+        } else {
+            text = #"{"status":"Fixture","source":"Coast","capturedAt":null,"current":null,"topApps":[],"segments":[]}"#
+        }
+        try text.write(
+            to: directory.appendingPathComponent("activitycontext.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+    }
+
+    private static func makeFollowUpFixture(in directory: URL, populated: Bool) throws {
+        let text: String
+        if populated {
+            text = """
+            {
+              "status": "Fixture Cued",
+              "items": [
+                {
+                  "id": "conversation-layden",
+                  "platform": "imessage",
+                  "person": "Layden Kennedy",
+                  "last_message_at": "2026-07-04 15:32:55",
+                  "is_from_me": false,
+                  "unread_count": 2,
+                  "preview": "What are you up to 4th of July"
+                },
+                {
+                  "id": "conversation-founder",
+                  "platform": "imessage",
+                  "person": "Founder intro",
+                  "last_message_at": "2026-06-30 09:18:04",
+                  "is_from_me": true,
+                  "unread_count": 0,
+                  "preview": "Sent the deck and asked for feedback."
+                }
+              ]
+            }
+            """
+        } else {
+            text = #"{"status":"Fixture Cued","items":[]}"#
+        }
+        try text.write(
+            to: directory.appendingPathComponent("followupqueue-items.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+    }
+
+    private static func makeGitHubQueueFixture(in directory: URL, populated: Bool) throws {
+        let text: String
+        if populated {
+            text = """
+            {
+              "status": "Fixture gh",
+              "pullRequests": [
+                {
+                  "number": 42,
+                  "title": "Tighten Surface panel recovery after idle",
+                  "url": "https://github.com/example/surface/pull/42",
+                  "headRefName": "codex/alt-e-recovery",
+                  "baseRefName": "main",
+                  "author": { "login": "snbafana" },
+                  "isDraft": false,
+                  "reviewDecision": "REVIEW_REQUIRED",
+                  "updatedAt": "2026-07-04T19:40:00Z",
+                  "checkSummary": { "passing": 5, "failing": 0, "pending": 1 }
+                },
+                {
+                  "number": 43,
+                  "title": "Add Cued follow-up queue block",
+                  "url": "https://github.com/example/surface/pull/43",
+                  "headRefName": "codex/followup-queue",
+                  "baseRefName": "main",
+                  "author": { "login": "agent-review" },
+                  "isDraft": false,
+                  "reviewDecision": null,
+                  "updatedAt": "2026-07-04T19:45:00Z",
+                  "checkSummary": { "passing": 3, "failing": 1, "pending": 0 }
+                },
+                {
+                  "number": 44,
+                  "title": "Draft activity context block",
+                  "url": "https://github.com/example/surface/pull/44",
+                  "headRefName": "codex/activity-context",
+                  "baseRefName": "main",
+                  "author": { "login": "agent-swipe" },
+                  "isDraft": true,
+                  "reviewDecision": null,
+                  "updatedAt": "2026-07-04T19:48:00Z",
+                  "checkSummary": { "passing": 0, "failing": 0, "pending": 4 }
+                }
+              ]
+            }
+            """
+        } else {
+            text = #"{"status":"Fixture gh","pullRequests":[]}"#
+        }
+        try text.write(
+            to: directory.appendingPathComponent("githubqueue-prs.json"),
             atomically: true,
             encoding: .utf8
         )

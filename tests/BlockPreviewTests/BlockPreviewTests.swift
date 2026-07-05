@@ -41,6 +41,13 @@ struct BlockPreviewTests {
     @Test func previewCasesCoverEveryCurrentPlugin() {
         let covered = Set(BlockPreview.cases.map(\.blockID.rawValue))
 
-        #expect(covered == ["quicksave", "copyhistory", "codexlog"])
+        #expect(covered == [
+            "quicksave",
+            "copyhistory",
+            "codexlog",
+            "activitycontext",
+            "followupqueue",
+            "githubqueue"
+        ])
     }
 }

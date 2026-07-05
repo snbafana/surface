@@ -14,8 +14,13 @@ struct SurfaceView: View {
             let grid = surface.workspace.layout.grid
             let cellWidth = proxy.size.width / CGFloat(grid.columns)
             let cellHeight = proxy.size.height / CGFloat(grid.rows)
-            let menuSize = CGSize(width: 270, height: 150)
             let margin = CGFloat(18)
+            let menuSize = controlsSize(
+                mode: surface.mode,
+                blockCount: surface.workspace.blocks.count,
+                container: proxy.size,
+                margin: margin
+            )
             let menuOrigin = menuCorner.origin(in: proxy.size, size: menuSize, margin: margin)
 
             ZStack(alignment: .topLeading) {
@@ -34,6 +39,23 @@ struct SurfaceView: View {
                     blockCard(block, grid: grid, container: proxy.size, cellWidth: cellWidth, cellHeight: cellHeight)
                 }
             }
+        }
+    }
+
+    private func controlsSize(
+        mode: SurfaceMode,
+        blockCount: Int,
+        container: CGSize,
+        margin: CGFloat
+    ) -> CGSize {
+        switch mode {
+        case .edit:
+            let width = min(max(container.width - margin * 2, 280), 360)
+            let desiredHeight = CGFloat(blockCount) * 54 + 84
+            let height = min(max(desiredHeight, 190), max(160, container.height - margin * 2))
+            return CGSize(width: width, height: height)
+        case .use:
+            return CGSize(width: 88, height: 38)
         }
     }
 
@@ -58,36 +80,43 @@ struct SurfaceView: View {
     @ViewBuilder
     private func controls(menuSize: CGSize) -> some View {
         if surface.mode == .edit {
-            HStack(alignment: .top, spacing: 10) {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Surface")
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    Text("Block Registry")
                         .font(.headline)
-                    ForEach(surface.workspace.blocks) { block in
-                        Toggle(
-                            block.title,
-                            isOn: Binding(
-                                get: {
-                                    surface.workspace.layout.blocks
-                                        .first(where: { $0.id == block.id })?.enabled ?? false
-                                },
-                                set: { surface.setBlockEnabled($0, id: block.id) }
-                            )
-                        )
+                        .lineLimit(1)
+                    Spacer()
+                    Button {
+                        withAnimation(.smooth(duration: 0.18)) {
+                            dragging.removeAll()
+                            hoveredBlock = nil
+                            surface.show()
+                        }
+                    } label: {
+                        Image(systemName: "checkmark")
+                            .frame(width: 26, height: 26)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Use")
+
+                    Button {
+                        surface.hide()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .frame(width: 26, height: 26)
+                    }
+                    .buttonStyle(.plain)
+                    .keyboardShortcut(.escape, modifiers: [])
+                    .help("Hide")
+                }
+
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(surface.workspace.blocks) { block in
+                            registryRow(for: block)
+                        }
                     }
                 }
-                Button("Use") {
-                    withAnimation(.smooth(duration: 0.18)) {
-                        dragging.removeAll()
-                        hoveredBlock = nil
-                        surface.show()
-                    }
-                }
-                .buttonStyle(.bordered)
-                Button("Esc") {
-                    surface.hide()
-                }
-                .keyboardShortcut(.escape, modifiers: [])
-                .buttonStyle(.bordered)
             }
             .padding(12)
             .frame(width: menuSize.width, height: menuSize.height, alignment: .topLeading)
@@ -103,7 +132,45 @@ struct SurfaceView: View {
                 }
             }
             .buttonStyle(.bordered)
-            .offset(x: 18, y: 18)
+            .frame(width: menuSize.width, height: menuSize.height, alignment: .topLeading)
+        }
+    }
+
+    private func registryRow(for block: Block) -> some View {
+        let isEnabled = surface.workspace.layout.blocks
+            .first(where: { $0.id == block.id })?.enabled ?? false
+
+        return HStack(alignment: .center, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(block.title)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+                Text("\(block.id.rawValue) / \(block.defaultSize.width)x\(block.defaultSize.height)")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 8)
+
+            Toggle(
+                "",
+                isOn: Binding(
+                    get: {
+                        surface.workspace.layout.blocks
+                            .first(where: { $0.id == block.id })?.enabled ?? false
+                    },
+                    set: { surface.setBlockEnabled($0, id: block.id) }
+                )
+            )
+            .labelsHidden()
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 46)
+        .background(.primary.opacity(isEnabled ? 0.075 : 0.04), in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(isEnabled ? Style.activeBorder : Style.border, lineWidth: 1)
         }
     }
 

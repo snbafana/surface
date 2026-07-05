@@ -1,9 +1,11 @@
 import AppKit
 import Carbon
 import Core
+import os
 
 final class SurfacePanel: NSPanel {
     var onEscape: (() -> Void)?
+    private let logger = Logger(subsystem: "com.snbafana.Surface", category: "SurfacePanel")
 
     init() {
         let frame = Self.targetFrameForDisplay()
@@ -13,6 +15,8 @@ final class SurfacePanel: NSPanel {
             backing: .buffered,
             defer: false
         )
+        isFloatingPanel = true
+        worksWhenModal = true
         prepareForDisplay()
     }
 
@@ -37,8 +41,36 @@ final class SurfacePanel: NSPanel {
         isReleasedWhenClosed = false
         isMovable = false
         isMovableByWindowBackground = false
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        collectionBehavior = [
+            .canJoinAllApplications,
+            .canJoinAllSpaces,
+            .fullScreenAuxiliary,
+            .ignoresCycle,
+            .transient
+        ]
         setFrame(targetFrame, display: true)
+    }
+
+    func showForDisplay() {
+        prepareForDisplay()
+        orderFrontRegardless()
+        makeKeyAndOrderFront(nil)
+        makeKey()
+        logState("Panel shown")
+    }
+
+    func reassertVisibleAfterActivation() {
+        DispatchQueue.main.async { [weak self] in
+            self?.reassertVisible(reason: "next-turn")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.10) { [weak self] in
+            self?.reassertVisible(reason: "delayed")
+        }
+    }
+
+    func hideFromDisplay() {
+        orderOut(nil)
+        logger.info("Panel hidden visible=\(self.isVisible, privacy: .public)")
     }
 
     private static func targetFrameForDisplay() -> NSRect {
@@ -47,6 +79,22 @@ final class SurfacePanel: NSPanel {
             NSMouseInRect(mouseLocation, screen.frame, false)
         } ?? NSScreen.main ?? NSScreen.screens.first
         return screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1200, height: 800)
+    }
+
+    private func reassertVisible(reason: String) {
+        guard isVisible else {
+            return
+        }
+        orderFrontRegardless()
+        makeKeyAndOrderFront(nil)
+        makeKey()
+        logState("Panel reasserted \(reason)")
+    }
+
+    private func logState(_ message: String) {
+        logger.info(
+            "\(message, privacy: .public) visible=\(self.isVisible, privacy: .public) key=\(self.isKeyWindow, privacy: .public) screen=\(self.screen?.localizedName ?? "none", privacy: .public) frame=\(NSStringFromRect(self.frame), privacy: .public) behavior=\(self.collectionBehavior.rawValue, privacy: .public)"
+        )
     }
 }
 
@@ -100,6 +148,14 @@ final class StatusIcon: NSObject, NSMenuDelegate {
         }
 
         menu.addItem(.separator())
+        let shortcutTitle = surface.keyboardShortcuts.lastFailureDescription.map {
+            "Shortcut issue: \($0)"
+        } ?? "Shortcut: Option-E"
+        let shortcutItem = NSMenuItem(title: shortcutTitle, action: nil, keyEquivalent: "")
+        shortcutItem.isEnabled = false
+        menu.addItem(shortcutItem)
+
+        menu.addItem(.separator())
         let blocksTitle = NSMenuItem(title: "Active Blocks", action: nil, keyEquivalent: "")
         blocksTitle.isEnabled = false
         menu.addItem(blocksTitle)
@@ -148,10 +204,22 @@ final class KeyboardShortcuts: KeyboardShortcutRegistrar {
         var action: @MainActor @Sendable () -> Void
     }
 
+    private let logger = Logger(subsystem: "com.snbafana.Surface", category: "KeyboardShortcuts")
     private var handlerRef: EventHandlerRef?
     private var nextID: UInt32 = 1
     private var hotKeyRefs: [KeyboardShortcutToken: EventHotKeyRef] = [:]
     private var registrations: [KeyboardShortcutToken: Registration] = [:]
+    private var lastFireTimes: [KeyboardShortcutToken: TimeInterval] = [:]
+    private(set) var lastFailureDescription: String?
+    private let minimumShortcutInterval: TimeInterval = 0.25
+
+    var activeSystemHotKeyCount: Int {
+        hotKeyRefs.count
+    }
+
+    var registrationCount: Int {
+        registrations.count
+    }
 
     @MainActor
     @discardableResult
@@ -162,12 +230,18 @@ final class KeyboardShortcuts: KeyboardShortcutRegistrar {
         let token = KeyboardShortcutToken(rawValue: nextID)
         nextID += 1
 
-        guard installHandlerIfNeeded(), let hotKeyRef = registerSystemHotKey(shortcut, token: token) else {
+        guard installHandlerIfNeeded() else {
+            recordFailure("could not install shortcut handler", shortcut: shortcut, status: nil)
+            return nil
+        }
+
+        guard let hotKeyRef = registerSystemHotKey(shortcut, token: token) else {
             return nil
         }
 
         hotKeyRefs[token] = hotKeyRef
         registrations[token] = Registration(shortcut: shortcut, action: action)
+        lastFailureDescription = nil
         return token
     }
 
@@ -177,31 +251,46 @@ final class KeyboardShortcuts: KeyboardShortcutRegistrar {
             UnregisterEventHotKey(hotKeyRef)
         }
         registrations[token] = nil
+        lastFireTimes[token] = nil
     }
 
     @MainActor
     func unregisterAll() {
         unregisterSystemHotKeys()
         registrations.removeAll()
+        lastFireTimes.removeAll()
     }
 
     @MainActor
-    func reconnectRegisteredShortcuts() {
+    @discardableResult
+    func reconnectRegisteredShortcuts() -> Bool {
+        let registrations = registrations
         unregisterSystemHotKeys()
-        if let handlerRef {
-            RemoveEventHandler(handlerRef)
-            self.handlerRef = nil
+
+        guard !registrations.isEmpty else {
+            lastFailureDescription = nil
+            return true
         }
 
         guard installHandlerIfNeeded() else {
-            return
+            if let registration = registrations.values.first {
+                recordFailure("could not install shortcut handler during reconnect", shortcut: registration.shortcut, status: nil)
+            }
+            return false
         }
 
+        var didFail = false
         for (token, registration) in registrations {
             if let hotKeyRef = registerSystemHotKey(registration.shortcut, token: token) {
                 hotKeyRefs[token] = hotKeyRef
+            } else {
+                didFail = true
             }
         }
+        if !didFail {
+            lastFailureDescription = nil
+        }
+        return !didFail
     }
 
     @MainActor
@@ -238,6 +327,7 @@ final class KeyboardShortcuts: KeyboardShortcutRegistrar {
         )
 
         guard status == noErr else {
+            recordFailure("registration failed", shortcut: shortcut, status: status)
             return nil
         }
         return hotKeyRef
@@ -292,7 +382,46 @@ final class KeyboardShortcuts: KeyboardShortcutRegistrar {
 
     @MainActor
     private func performShortcut(_ token: KeyboardShortcutToken) {
-        registrations[token]?.action()
+        guard let registration = registrations[token] else {
+            logger.error("Shortcut fired with no registration token=\(token.rawValue, privacy: .public)")
+            return
+        }
+        let now = ProcessInfo.processInfo.systemUptime
+        if let lastFireTime = lastFireTimes[token], now - lastFireTime < minimumShortcutInterval {
+            logger.info("Shortcut repeat ignored token=\(token.rawValue, privacy: .public) shortcut=\(registration.shortcut.displayName, privacy: .public)")
+            return
+        }
+        lastFireTimes[token] = now
+        logger.info("Shortcut fired token=\(token.rawValue, privacy: .public) shortcut=\(registration.shortcut.displayName, privacy: .public)")
+        registration.action()
+    }
+
+    @MainActor
+    private func recordFailure(_ message: String, shortcut: KeyboardShortcut, status: OSStatus?) {
+        let statusText = status.map { " OSStatus \($0)" } ?? ""
+        lastFailureDescription = "\(shortcut.displayName) \(message)\(statusText)"
+        if let status {
+            logger.error(
+                "\(message, privacy: .public): keyCode=\(shortcut.keyCode, privacy: .public) modifiers=\(shortcut.modifiers, privacy: .public) status=\(status, privacy: .public)"
+            )
+        } else {
+            logger.error(
+                "\(message, privacy: .public): keyCode=\(shortcut.keyCode, privacy: .public) modifiers=\(shortcut.modifiers, privacy: .public)"
+            )
+        }
+    }
+}
+
+private extension KeyboardShortcut {
+    var displayName: String {
+        switch (keyCode, modifiers) {
+        case (UInt32(kVK_ANSI_E), UInt32(optionKey)):
+            return "Option-E"
+        case (UInt32(kVK_ANSI_C), UInt32(optionKey)):
+            return "Option-C"
+        default:
+            return "keyCode \(keyCode) modifiers \(modifiers)"
+        }
     }
 }
 

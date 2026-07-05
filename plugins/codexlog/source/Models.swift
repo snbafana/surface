@@ -87,6 +87,7 @@ struct CodexActionProposal: Equatable, Identifiable, Sendable {
 }
 
 struct CodexSnapshot: Equatable, Sendable {
+    var generatedAt: Date = Date()
     var threads: [CodexThreadSummary] = []
     var runningThreads: [CodexRunningThread] = []
     var automations: [CodexAutomationSummary] = []
