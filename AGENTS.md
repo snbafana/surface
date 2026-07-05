@@ -25,6 +25,6 @@ The preview harness must use the real `Block` / `BlockRuntime.makeView()` path. 
 
 Evidence this loop works in this repo:
 
-- `BlockPreview.renderAll` renders `quicksave`, `copyhistory`, and `codexlog` fixtures through `Blocks.registry`.
+- `BlockPreview.renderAll` renders every current plugin fixture through `Blocks.registry`.
 - `BlockPreviewTests` verifies that every current plugin has preview fixture coverage and that rendered PNGs are nonblank.
 - The expected fast loop is one plugin at a time: render PNG, inspect, patch, rerender, then run the smoke test.

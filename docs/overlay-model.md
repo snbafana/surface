@@ -17,7 +17,7 @@ There is no second provider layer. A plugin folder is a packaging boundary; the 
 
 The minimum model is:
 
-- `Block`: a possible block type, such as quicksave, copy history, codex log, activity context, follow-up queue, or GitHub queue.
+- `Block`: a possible block type, such as quicksave, copy history, codex log, activity context, follow-up queue, GitHub queue, or integration hub.
 - `Block.Instance`: the singleton placement of that block in a layout.
 - `BlockRuntime`: the live object backing an enabled block.
 - `Workspace`: the available blocks plus the active layout.
@@ -79,7 +79,7 @@ The layout model uses a simple integer grid:
 
 This is intentionally enough for the first visual editor and no more.
 
-`SurfaceLayout.defaultLayout` currently owns the default 24-by-16 grid and the default placements for `quicksave`, `copyhistory`, `activitycontext`, `githubqueue`, `followupqueue`, and `codexlog`.
+`SurfaceLayout.defaultLayout` currently owns the default 24-by-17 grid and the default placements for `quicksave`, `copyhistory`, `activitycontext`, `githubqueue`, `followupqueue`, `integrationhub`, and `codexlog`.
 
 ## Block Registry
 
@@ -92,6 +92,8 @@ This is intentionally enough for the first visual editor and no more.
 The workspace and layout only store block ids, enabled state, and frames. The registry supplies the UI and runtime behavior for each known block id.
 
 `BlockRegistry` validates that block ids are unique. `Workspace.validate()` then checks that layout ids exist, layout ids are not duplicated, frames stay in the grid, and enabled frames do not overlap.
+
+The human-facing registry table in `README.md` mirrors `plugins/Blocks.swift`. It is documentation, not a second source of truth.
 
 ## Add a Block
 

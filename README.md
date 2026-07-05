@@ -15,6 +15,23 @@ tests/         model tests
 
 Surface does not have a separate plugin/provider layer. A block type is the unit of extension. The architecture details live in [docs/overlay-model.md](docs/overlay-model.md).
 
+## Quick Start
+
+Clone the repo on macOS, build the SwiftPM package, then launch the local app bundle:
+
+```bash
+swift build
+./script/build_and_run.sh
+```
+
+`./script/build_and_run.sh` writes `dist/Surface.app` and opens it. Use that app bundle for normal local testing because the script also stops stale Surface processes that can hold old global hotkeys.
+
+To test the installed-app path, copy or install `dist/Surface.app` to `/Applications/Surface.app`, then run:
+
+```bash
+./script/verify_alt_e.sh --app /Applications/Surface.app
+```
+
 ## Requirements
 
 - macOS 14 or newer.
@@ -79,6 +96,7 @@ swift test --filter CodexLogTests
 swift test --filter ActivityContextTests
 swift test --filter FollowUpQueueTests
 swift test --filter GitHubQueueTests
+swift test --filter IntegrationHubTests
 ```
 
 ## Block Preview Harness
@@ -139,6 +157,22 @@ The extension unit is a `Block`:
 Current plugin targets are `Quicksave`, `CopyHistory`, `CodexLog`, `ActivityContext`, `FollowUpQueue`, `GitHubQueue`, and `IntegrationHub`. Each exposes `Plugin.block` from its `plugins/<name>/source` directory. `CopyHistory` uses the same runtime contract as the other blocks: previews load `copyhistory.txt` from `Block.Context.storageDirectory`, while the live app watches `NSPasteboard.general` and persists history under Application Support.
 
 Context-aware blocks follow the same contract. Previews read deterministic fixture files from `Block.Context.storageDirectory`, while live adapters are guarded by `Block.Context.allowsLiveProcesses`. Live Coast, Cued, and GitHub CLI reads run in plugin-owned background tasks so app launch and global shortcut registration stay responsive. Integration Hub is intentionally lighter: it checks executable availability and environment readiness, then copies commands or opens source docs from explicit row actions.
+
+## Installed Block Registry
+
+This table mirrors the block registry in `plugins/Blocks.swift`. Treat the Swift registry as the source of truth; update this table when adding, removing, or renaming a block.
+
+| Block ID | Title | Target | Owner Path | Block Default | Initial Layout | Live Dependencies | Preview Fixtures | Boundary |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `quicksave` | Quicksave | `Quicksave` | `plugins/quicksave` | `10x5` | `8x5` | macOS pasteboard and `Option-C` hotkey through `Block.Context.keyboardShortcuts` | `empty`, `notes-and-captures` | Captures clipboard/notes into local files and optional Obsidian paths; does not own Copy History. |
+| `copyhistory` | Copy History | `CopyHistory` | `plugins/copyhistory` | `8x8` | `7x6` | macOS pasteboard; Application Support history file | `empty`, `mixed-clipboard` | Stores recent text copies and copy-back actions; no rule engine or cross-plugin clipboard router. |
+| `codexlog` | Codex Log | `CodexLog` | `plugins/codexlog` | `8x10` | `7x8` | Local Codex state, session files, action log, and optional process scan | `empty`, `active-thread` | Shows Codex threads/actions and approval rows; remains the generic action-log owner. |
+| `activitycontext` | Activity Context | `ActivityContext` | `plugins/activitycontext` | `7x6` | `7x6` | Optional `coast` CLI via `Core.LocalCommand` | `empty`, `work-session` | Shows bounded current/recent screen context; not a timeline browser or OCR search UI. |
+| `followupqueue` | Follow Ups | `FollowUpQueue` | `plugins/followupqueue` | `8x5` | `8x5` | Optional `cued` CLI via `Core.LocalCommand` | `empty`, `mixed-followups` | Shows local follow-up candidates; does not send messages or duplicate Cued's contact graph. |
+| `githubqueue` | GitHub Queue | `GitHubQueue` | `plugins/githubqueue` | `8x5` | `8x5` | Optional `gh` CLI via `Core.LocalCommand` | `empty`, `mixed-prs` | Shows current-repo PR cards and copy/open actions; not a full GitHub client. |
+| `integrationhub` | Integration Hub | `IntegrationHub` | `plugins/integrationhub` | `10x4` | `16x5` | Optional CLI/env checks for `browse`, `bb`, `coast`, `cued`, `gh`, and selected agent tools | `empty`, `mixed-integrations` | Readiness/source cards only; no credential store, installer, automation runner, network crawler, or second registry. |
+
+External integrations are optional. Missing CLIs should produce visible empty or unavailable states, not startup failure. Blocks that read local command output use `Core.LocalCommand` so executable lookup and process execution stay centralized.
 
 ## Add a Plugin
 
